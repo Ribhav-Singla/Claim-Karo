@@ -1,0 +1,12 @@
+{
+  "users": [
+    {"id": "u_ravi", "name": "Ravi Kumar", "language": "hi", "phone": "+91-90000-11111"},
+    {"id": "u_priya", "name": "Priya Sharma", "language": "en", "phone": "+91-90000-22222"}
+  ],
+  "vehicles": [
+    {"id": "v_ravi_bike", "user_id": "u_ravi", "type": "2W", "reg_no": "UP16AB4521", "make_model": "Royal Enfield Classic 350", "year": 2022},
+    {"id": "v_ravi_scooty", "user_id": "u_ravi", "type": "2W", "reg_no": "UP16Z9001", "make_model": "Honda Activa 4G", "year": 2016},
+    {"id": "v_priya_creta", "user_id": "u_priya", "type": "4W", "reg_no": "DL3CAF7788", "make_model": "Hyundai Creta SX", "year": 2023},
+    {"id": "v_priya_swift", "user_id": "u_priya", "type": "4W", "reg_no": "DL8CX1234", "make_model": "Maruti Swift VXi", "year": 2021}
+  ]
+}

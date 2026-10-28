@@ -1,0 +1,15 @@
+{
+  "_comment": "key = claim_type|route|docs_complete -> [min_days, max_days]. Synthetic, tuned for the demo.",
+  "own_damage|cashless|true": [7, 9],
+  "own_damage|cashless|false": [12, 14],
+  "own_damage|reimbursement|true": [10, 15],
+  "own_damage|reimbursement|false": [18, 25],
+  "third_party|cashless|true": [30, 90],
+  "third_party|cashless|false": [45, 120],
+  "third_party|reimbursement|true": [30, 90],
+  "third_party|reimbursement|false": [45, 120],
+  "both|cashless|true": [10, 14],
+  "both|cashless|false": [15, 21],
+  "both|reimbursement|true": [14, 21],
+  "both|reimbursement|false": [21, 30]
+}

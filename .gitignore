@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets / runtime
+.env
+*.db
+logs/
+
+# Node
+node_modules/
+web/dist/
+
+# Generated TTS cache (pre-generated lines are committed under static/audio/pregen/)
+api/static/audio/*.mp3
+!api/static/audio/pregen/
