@@ -1,0 +1,23 @@
+{
+  "folders": {},
+  "connections": {
+    "claimkaro-postgres": {
+      "provider": "postgresql",
+      "driver": "postgres-jdbc",
+      "name": "Claim Karo (Postgres)",
+      "save-password": true,
+      "read-only": false,
+      "configuration": {
+        "host": "postgres",
+        "port": "5432",
+        "database": "claim_karo",
+        "configurationType": "MANUAL",
+        "auth-model": "native",
+        "auth-properties": {
+          "userName": "claimkaro",
+          "userPassword": "claimkaro"
+        }
+      }
+    }
+  }
+}

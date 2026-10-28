@@ -1,0 +1,53 @@
+# Local infra: Postgres + CloudBeaver (DBeaver in the browser). Started by start.ps1.
+name: claim-karo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: claim_karo
+      POSTGRES_USER: claimkaro
+      POSTGRES_PASSWORD: claimkaro
+    ports:
+      - "5433:5432" # 5433 on the host so it never clashes with a local Postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claimkaro -d claim_karo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Copies the preset connection into CloudBeaver's workspace on first run only.
+  # CloudBeaver rewrites these files (it encrypts the password), so they live in a volume.
+  cloudbeaver-init:
+    image: busybox:1.37
+    command: >
+      sh -c "mkdir -p /ws/GlobalConfiguration/.dbeaver &&
+             [ -f /ws/GlobalConfiguration/.dbeaver/data-sources.json ] ||
+             cp /seed/*.json /ws/GlobalConfiguration/.dbeaver/"
+    volumes:
+      - ./docker/cloudbeaver:/seed:ro
+      - cbworkspace:/ws
+
+  cloudbeaver:
+    image: dbeaver/cloudbeaver:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+      cloudbeaver-init:
+        condition: service_completed_successfully
+    environment:
+      CB_SERVER_NAME: Claim Karo
+      CB_SERVER_URL: http://localhost:8978/
+      CB_ADMIN_NAME: cbadmin
+      CB_ADMIN_PASSWORD: ClaimKaro123
+      CLOUDBEAVER_APP_ANONYMOUS_ACCESS_ENABLED: "true"
+    ports:
+      - "8978:8978"
+    volumes:
+      - cbworkspace:/opt/cloudbeaver/workspace
+
+volumes:
+  pgdata:
+  cbworkspace:

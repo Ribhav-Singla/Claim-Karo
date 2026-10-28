@@ -48,11 +48,11 @@ If the policy has an **NCB Protect** add-on, the verdict flips to "claim" for sm
 | Priority | Feature | Owner |
 |---|---|---|
 | P0 | Push-to-talk voice intake (Sarvam STT) + text fallback | B |
-| P0 | Incident extraction to structured JSON (Claude, tool use) | A |
+| P0 | Incident extraction to structured JSON (Claude, structured output) | A |
 | P0 | Policy matching from synthetic wallet | A |
 | P0 | Viability rules engine + Claude explanation in user's language | A |
 | P0 | Photo upload + vision grading with retake guidance | A/B |
-| P0 | Live claim-form panel that fills as fields arrive (SSE) | B |
+| P0 | Live claim-form panel that fills as fields arrive (WebSocket) | B |
 | P0 | Missing-document checklist | A |
 | P0 | Settlement estimate (lookup table) | A |
 | P0 | TTS replies (Sarvam) with pre-generated audio for fixed lines | B |
@@ -68,24 +68,25 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
 ## 3. Architecture
 
 ```
-┌──────────────────────────────── Browser (React) ────────────────────────────────┐
+┌──────────────────────────────── Browser (Next.js) ──────────────────────────────┐
 │  Chat column                          │  Claim panel                            │
 │  - bot/user bubbles (text always)     │  - form fields animate in as found      │
 │  - push-to-talk mic button            │  - photo thumbnails with ✓ / retake     │
 │  - photo upload                       │  - viability verdict card               │
 │  - audio player for TTS               │  - missing docs, settlement estimate    │
 └───────────────┬───────────────────────┴──────────────────────┬──────────────────┘
-                │ HTTP POST (audio / text / photo)              │ SSE (server → browser)
+                │ WebSocket /ws (audio / text / photo / decision ⇄ events, JSON)          
                 ▼                                               ▲
 ┌──────────────────────────────── FastAPI backend ─────────────────────────────────┐
-│  routes/            session.py  turn.py  photo.py  stream.py (SSE)               │
+│  main.py            WebSocket /ws — one Agent per connection                     │
 │  agent/             state_machine.py  ← one handler per state                    │
-│  services/          claude.py  sarvam.py  rules.py  vision.py  settlement.py     │
+│  services/          claude.py  sarvam.py  rules.py  settlement.py                │
+│  db/                asyncpg pool, schema.sql (applied on startup)                │
 │  data/              policies.json  users.json  settlement_table.json             │
-│  db/                sqlite (sessions, incidents, claims, evidence)               │
 │  static/audio/      pre-generated TTS for fixed bot lines                        │
 └──────────────────────────────────────────────────────────────────────────────────┘
-        │ Claude API (Sonnet: text + vision)        │ Sarvam API (STT + TTS)
+        │ Claude API (Sonnet: text + vision)   │ Sarvam API (STT + TTS)   │ Postgres (Docker)
+                                                                        ▲ CloudBeaver :8978
 ```
 
 ### Design decisions (do not relitigate)
@@ -97,12 +98,15 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
    never computes deductibles, NCB or payouts.
 3. **Policies are hand-written structured JSON**, not PDFs in a vector store.
 4. **One model**: latest Sonnet (`claude-sonnet-5-5`, set via `CLAUDE_MODEL`) for
-   extraction, explanation and vision. Use tool use / `input_schema` for every structured
-   output; validate with Pydantic; retry once on validation failure.
+   extraction, explanation and vision. Every call uses structured outputs
+   (`client.messages.parse` with a Pydantic `output_format`); retry once on validation
+   failure. Sonnet 5.5 rejects forced `tool_choice` and custom `temperature`, so no tool use.
 5. **Language flow**: STT text (Hindi/English) → Claude works internally in English →
    Claude writes the user-facing reply in `session.language` → Sarvam TTS.
-6. **Transport**: browser sends audio/photo/text via normal HTTP POST. Server pushes all
-   results back over **one SSE stream per session**. No WebSocket.
+6. **Transport**: **one WebSocket per conversation** (`/ws?user_id=&language=`). Browser
+   sends text, audio (base64), photos (base64) and decisions as JSON; server pushes every
+   event back on the same socket. The agent keeps working state in memory and writes
+   through to Postgres (sessions, messages, incidents, evidence, claims).
 7. **Push-to-talk only.** No VAD, no always-on mic, no barge-in.
 8. **Text is always visible.** Every bot utterance is rendered as text; voice is additive.
 9. **Synthetic data only.** Nothing calls a real insurer or Paytm.
@@ -118,7 +122,7 @@ INTAKE ──► MATCH_POLICY ──► VIABILITY ──► EVIDENCE ──► F
                     └──► NO_COVER
 ```
 
-| State | Input | Does | Claude call | Emits (SSE) | Next |
+| State | Input | Does | Claude call | Emits (WS) | Next |
 |---|---|---|---|---|---|
 | `INTAKE` | user utterance | Extract/merge `Incident`. If required fields missing, ask one targeted question. | `extract_incident` (tool) | `transcript`, `field` ×N, `bot_message`, `audio` | self (ask) or `MATCH_POLICY` |
 | `MATCH_POLICY` | Incident | Filter user's policies by vehicle reg + date in period + cover type. | none (rules) | `policy_matched` | `VIABILITY` or `NO_COVER` |
@@ -136,7 +140,7 @@ agent asks for garage estimate or lets user say "pata nahi" and proceeds with
 
 ## 5. Data model
 
-Store as SQLite tables; Pydantic models in `models.py`. Synthetic seed data in `data/`.
+Stored in Postgres (`api/db/schema.sql`, tables listed in §11); Pydantic models in `models.py`. Synthetic seed data in `data/`.
 
 ```python
 class User:           id, name, language ("hi"|"en"), phone
@@ -252,11 +256,10 @@ Required photos: `damage_wide` (must show the number plate) for every vehicle, p
 
 ## 7. Claude calls (`services/claude.py`)
 
-All calls use tool use with a strict `input_schema`; the tool name is the function name.
-System prompt is shared; each state passes a small task block. Temperature 0 for
-extraction/grading, 0.5 for explanations.
+All calls use structured outputs: one Pydantic output model per function, effort `low`
+for latency. System prompt is shared; each state passes a small task block.
 
-| Tool | Input | Output schema (abridged) |
+| Function | Input | Output schema (abridged) |
 |---|---|---|
 | `extract_incident` | prior `Incident` JSON + new utterance + user vehicles | `Incident` fields (nullable) + `clarifying_question: str\|null` + `reply_to_user: str` |
 | `explain_verdict` | `Viability` + policy summary + language | `reply_to_user: str` (in user language, ≤ 3 sentences, mention rupee numbers) |
@@ -286,72 +289,78 @@ Photo checklist for `grade_damage_photo` (surveyor requirements):
 
 ## 8. Sarvam integration (`services/sarvam.py`)
 
-- **STT**: send the recorded audio blob (webm/wav) with language hint from session;
-  return transcript + detected language. Timeout 8 s; on failure emit `stt_failed`
-  and prompt the user to type.
-- **TTS**: input text + language + speaker; return audio (mp3/wav) → store under
-  `static/audio/<hash>.mp3` and emit `audio` event with URL. Cache by `(text, lang)` hash.
-- **Pre-generated lines** (`scripts/pregen_audio.py`, run once, commit the files):
-  greeting, "please upload a photo of the damage", "one moment", "got it",
-  "please show the number plate", "please take a wider shot", "claim filed".
-- Start TTS on the first sentence of a multi-sentence reply; emit audio chunks in order.
+Checked against docs.sarvam.ai on 2026-10-28.
 
-Check the current Sarvam API docs for exact endpoint names, model names and audio
-formats before coding; do not rely on memory.
+- **STT**: `POST https://api.sarvam.ai/speech-to-text`, header `api-subscription-key`,
+  multipart `file` + `model=saaras:v4` + `language_code=unknown` (auto-detect). Returns
+  `transcript` + `language_code`; the detected language becomes the session language.
+  Timeout 8 s; on failure emit `stt_failed` and the user types instead.
+- **TTS**: `POST https://api.sarvam.ai/text-to-speech`, JSON `{text, language_code
+  (hi-IN|en-IN), model: "bulbul:v3", speaker, output_audio_codec: "mp3"}`. Returns
+  base64 in `audios[0]`, sent straight to the browser in the `audio` event. Speaker from
+  `SARVAM_TTS_SPEAKER` (default `shubh`; v3 voices: shubh, aditya, ritu, priya, neha, …).
+- **Later**: cache TTS by `(text, lang)` hash, pre-generate fixed lines
+  (`scripts/pregen_audio.py`), sentence-level TTS for long replies.
 
 ---
 
-## 9. HTTP + SSE contract
+## 9. API contract
 
 ```
-POST /session                      {user_id, language}      → {session_id}
-GET  /session/{id}/events          SSE stream (keep open for the whole session)
-POST /session/{id}/turn            multipart: audio | text   → 202 (results arrive via SSE)
-POST /session/{id}/photo           multipart: file, kind?    → 202
-POST /session/{id}/decision        {decision: "claim"|"dont_claim"|"file"} → 202
-GET  /session/{id}                 full session state (for reload)
-GET  /static/audio/{file}
+GET /users/lookup?phone=9000011111       login stand-in: wallet user + vehicles + policies
+                                         (matches the last 10 digits; 404 if unknown)
+WS  /ws?user_id=u_ravi&language=hi       one socket = one conversation
 ```
 
-SSE event types (JSON `data`), in the order a turn typically produces them:
+Client → server (JSON):
+
+```
+{"type": "text",     "text": "..."}
+{"type": "audio",    "data": "<base64>", "mime": "audio/webm"}
+{"type": "photo",    "data": "<base64>", "mime": "image/jpeg", "photo_id": "<uuid>"}
+{"type": "decision", "decision": "claim" | "dont_claim" | "file"}
+```
+
+Server → client, `{"type": <name>, ...fields}`, in the order a turn typically produces them:
 
 ```
 transcript       {text, language}
 bot_thinking     {}                           # UI shows pulsing indicator
-field            {name, value, source}        # one per extracted/updated incident field
-policy_matched   {policy_id, insurer, cover_type, ncb_pct, deductible_inr}
-viability        {Viability}
-photo_graded     {evidence_id, kind, accepted, issues, retake_instruction}
-form_ready       {ClaimForm}
+field            {name, value}                # one per extracted/updated incident field
+policy_matched   {policy_id, insurer, policy_no, cover_type, ncb_pct, deductible_inr, addons}
+viability        {...Viability}
+photo_graded     {photo_id, kind, accepted, issues, retake_instruction}
+form_ready       {form}
 missing_docs     {docs: [..]}
-settlement       {min_days, max_days, reason}
-bot_message      {text, language}             # always, even if audio also sent
-audio            {url, seq}
+settlement       {min_days, max_days, route, docs_complete}
+bot_message      {text, language}             # always, before audio
+audio            {data (base64 mp3), mime}
 state            {state}
 filed            {reference_no}
 error            {code, message}
 stt_failed       {}
 ```
 
-Every turn is processed in a background task; the HTTP response returns immediately.
+Messages on one socket are handled one at a time, in arrival order.
 
 ---
 
 ## 10. Frontend (`web/`)
 
-React + Vite + Tailwind. Single page, two columns on desktop, stacked on mobile
-(demo on a laptop at a phone-ish width).
+Next.js (App Router) + Tailwind v4. Single page, two columns on desktop, stacked on mobile.
 
-Components:
+Paytm-inspired theme (navy `#002E6E`, cyan `#00BAF2`), tokens in `app/globals.css`.
 
-- `ChatColumn` — message list, `MicButton` (hold to record, MediaRecorder → POST /turn),
-  text input, `PhotoUpload`, `AudioPlayer` (queue by `seq`, autoplay).
-- `ClaimPanel` — `IncidentFields` (animate each `field` event in), `PolicyCard`,
-  `ViabilityCard` (big verdict + the two numbers side by side), `EvidenceGrid`
-  (thumbnail + ✓ / retake badge), `MissingDocs`, `SettlementChip`, `FileClaimButton`.
-- `useSession` hook — owns the `EventSource`, reduces events into state.
+- `components/Login.tsx` — mobile-number entry (+91), calls `/users/lookup`; demo numbers
+  9000011111 (Ravi, Hindi) and 9000022222 (Priya, English) as one-tap chips.
+- `app/page.tsx` — header (language toggle, new claim, user, log out), then the session.
+- `components/Chat.tsx` — messages, hold-to-talk mic (MediaRecorder), text input,
+  photo upload in `EVIDENCE` (resized to 1600px JPEG), claim / don't-claim buttons.
+- `components/ClaimPanel.tsx` — progress stepper, verdict card, the user's vehicles and
+  policies (until one is matched), incident fields, policy, verdict card, photo grid with
+  ✓ / retake, claim form, missing docs, settlement, File claim button.
+- `lib/useClaimSocket.ts` — owns the WebSocket, reduces events into state, queues audio.
 
-UI states to show visibly: idle → recording → uploading → thinking → speaking.
 Never block the UI on audio; text appears first.
 
 ---
@@ -361,26 +370,56 @@ Never block the UI on audio; text appears first.
 ```
 claim-karo/
 ├── README.md                   ← this file
+├── docker-compose.yml          # Postgres 17 + CloudBeaver
+├── docker/cloudbeaver/         # preset CloudBeaver connection (copied in on first run)
+├── start.ps1 / stop.ps1        # start / stop everything
 ├── api/
-│   ├── main.py                 # FastAPI app, CORS, static
-│   ├── routes/                 # session.py turn.py photo.py stream.py
-│   ├── agent/state_machine.py
-│   ├── services/               # claude.py sarvam.py rules.py vision.py settlement.py
+│   ├── main.py                 # FastAPI app + WebSocket /ws
+│   ├── db/                     # __init__.py (asyncpg queries), schema.sql
+│   ├── agent/state_machine.py  # Agent: one per connection
+│   ├── services/               # claude.py sarvam.py rules.py settlement.py
 │   ├── models.py               # Pydantic
 │   ├── seed.py                 # loads data/*.json into models
-│   ├── db.py                   # sqlite helpers
 │   ├── data/                   # users.json policies.json settlement_table.json
 │   ├── static/audio/           # pre-generated TTS
 │   ├── scripts/pregen_audio.py
 │   └── tests/test_rules.py
-├── web/                        # React app
+├── web/                        # Next.js app
+│   ├── app/                    # layout.tsx page.tsx globals.css
+│   ├── components/             # Chat.tsx ClaimPanel.tsx
+│   └── lib/useClaimSocket.ts
 └── docs/
     ├── DEMO_SCENARIOS.md
     └── pitch/Claim_Karo_Pitch.pptx
 ```
 
 Env vars (`api/.env`): `ANTHROPIC_API_KEY`, `SARVAM_API_KEY`, `CLAUDE_MODEL`,
-`SARVAM_TTS_SPEAKER`, `DB_PATH`.
+`SARVAM_TTS_SPEAKER`, `DATABASE_URL`, `CORS_ORIGINS` (optional). Web (`web/.env.local`, optional):
+`NEXT_PUBLIC_WS_URL` (default `ws://localhost:8000/ws`), `NEXT_PUBLIC_API_URL`
+(default `http://localhost:8000`).
+
+### Running locally
+
+Needs Docker Desktop, Python 3.13 (`py` launcher) and Node 22.
+
+```
+.\start.ps1            # Docker, frontend production build, then API and web (next start) in their own windows
+.\stop.ps1             # stop everything, keep the data
+.\stop.ps1 -Reset      # stop everything and delete the database + CloudBeaver volumes
+```
+
+The first run creates `api/.venv`, `api/.env` and `web/node_modules`.
+
+| Service | URL | Login |
+|---|---|---|
+| App | http://localhost:3000 | — |
+| API | http://localhost:8000 (WebSocket `/ws`) | — |
+| CloudBeaver | http://localhost:8978 | opens anonymously with the `Claim Karo (Postgres)` connection; admin `cbadmin` / `ClaimKaro123` |
+| Postgres | `localhost:5433`, db `claim_karo` | `claimkaro` / `claimkaro` |
+
+Tables: `users`, `vehicles`, `policies` (copied from `data/*.json` on every start),
+`sessions`, `messages`, `incidents` (with verdict + viability JSON), `evidence`, `claims`.
+All credentials are local-dev only.
 
 ### Running the backend tests
 
@@ -419,8 +458,8 @@ Record a screen + audio video of Scenarios 1 and 2 on Day 4 as a fallback.
 
 | Day | Person A (backend / agent) | Person B (frontend / voice) |
 |---|---|---|
-| 1 | Seed data; `models.py`; `rules.py` + tests; settlement table | Vite app skeleton; `MicButton` recording; Sarvam STT/TTS wrappers against a stub; `pregen_audio.py` |
-| 2 | `state_machine.py` INTAKE → VIABILITY; `claude.py` extract + explain tools; SSE stream | `useSession` + SSE reducer; `ClaimPanel` fields animating; audio queue |
+| 1 | Seed data; `models.py`; `rules.py` + tests; settlement table | Next.js skeleton; `MicButton` recording; Sarvam STT/TTS wrappers against a stub; `pregen_audio.py` |
+| 2 | `state_machine.py` INTAKE → VIABILITY; `claude.py` extract + explain; WebSocket | `useClaimSocket` reducer; `ClaimPanel` fields animating; audio queue |
 | 3 | EVIDENCE + vision grading; FORM_REVIEW; missing docs | Photo upload + `EvidenceGrid`; integration; Scenario 1 end to end |
 | 4 | Scenario 2 end to end; P1 if time; latency tuning | Polish, error states, rehearsal, fallback recordings |
 
@@ -445,7 +484,7 @@ voice in and voice out, no console errors.
 ## 15. Conventions
 
 - Python 3.11+, `ruff` formatting, type hints everywhere, Pydantic v2.
-- No business logic in routes; routes call the state machine; the state machine calls services.
+- No business logic in `main.py`; it calls the state machine; the state machine calls services.
 - Every Claude tool has a fixture test with a canned response.
 - Commit small and often; `main` must always run Scenario 1.
 - Log every Claude/Sarvam call with latency to `logs/` — we will tune from this.

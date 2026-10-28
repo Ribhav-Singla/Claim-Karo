@@ -12,8 +12,13 @@ logs/
 
 # Node
 node_modules/
-web/dist/
+web/.next/
+web/next-env.d.ts
+web/.env.local
 
 # Generated TTS cache (pre-generated lines are committed under static/audio/pregen/)
 api/static/audio/*.mp3
 !api/static/audio/pregen/
+
+# start.ps1 process ids
+.pids
