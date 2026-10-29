@@ -52,9 +52,12 @@ export type ClaimState = {
   referenceNo: string | null;
   error: string | null;
   sttFailed: boolean;
+  turnDone: boolean; // server finished the last turn; nothing more comes until we send
+  speaking: boolean; // bot audio is playing
+  language: Language; // of the last bot message (follows the language the user speaks)
 };
 
-const initial: ClaimState = {
+const initial: Omit<ClaimState, "language"> = {
   status: "connecting",
   state: "INTAKE",
   messages: [],
@@ -68,6 +71,8 @@ const initial: ClaimState = {
   referenceNo: null,
   error: null,
   sttFailed: false,
+  turnDone: false,
+  speaking: false,
 };
 
 type ServerEvent = { type: string } & Record<string, any>;
@@ -77,7 +82,8 @@ type Action =
   | { type: "_closed" }
   | { type: "_user"; text: string }
   | { type: "_sending" }
-  | { type: "_photo"; photo: Photo };
+  | { type: "_photo"; photo: Photo }
+  | { type: "_speaking"; speaking: boolean };
 
 function reducer(s: ClaimState, e: Action): ClaimState {
   switch (e.type) {
@@ -88,14 +94,24 @@ function reducer(s: ClaimState, e: Action): ClaimState {
     case "_user":
       return { ...s, messages: [...s.messages, { role: "user", text: e.text }], sttFailed: false };
     case "_sending":
+      return { ...s, status: "thinking", sttFailed: false, turnDone: false };
     case "bot_thinking":
       return { ...s, status: "thinking", sttFailed: false };
     case "_photo":
-      return { ...s, photos: [...s.photos, e.photo], status: "thinking" };
+      return { ...s, photos: [...s.photos, e.photo], status: "thinking", turnDone: false };
+    case "_speaking":
+      return { ...s, speaking: e.speaking };
+    case "turn_done":
+      return { ...s, status: "idle", turnDone: true };
     case "transcript":
       return { ...s, messages: [...s.messages, { role: "user", text: e.text }] };
     case "bot_message":
-      return { ...s, status: "idle", messages: [...s.messages, { role: "bot", text: e.text }] };
+      return {
+        ...s,
+        status: "idle",
+        language: e.language ?? s.language,
+        messages: [...s.messages, { role: "bot", text: e.text }],
+      };
     case "state":
       return { ...s, state: e.state };
     case "field":
@@ -131,21 +147,39 @@ function reducer(s: ClaimState, e: Action): ClaimState {
 }
 
 export function useClaimSocket(userId: string, language: Language) {
-  const [state, dispatch] = useReducer(reducer, initial);
+  const [state, dispatch] = useReducer(reducer, { ...initial, language });
   const ws = useRef<WebSocket | null>(null);
   const audioQueue = useRef<string[]>([]);
-  const playing = useRef(false);
+  const current = useRef<HTMLAudioElement | null>(null);
 
   const playNext = useCallback(() => {
     const src = audioQueue.current.shift();
     if (!src) {
-      playing.current = false;
+      current.current = null;
+      dispatch({ type: "_speaking", speaking: false });
       return;
     }
-    playing.current = true;
     const audio = new Audio(src);
+    current.current = audio;
+    dispatch({ type: "_speaking", speaking: true });
     audio.onended = audio.onerror = () => playNext();
     audio.play().catch(() => playNext()); // autoplay blocked: text is already on screen
+  }, []);
+
+  const play = useCallback(
+    (src: string) => {
+      audioQueue.current.push(src);
+      if (!current.current) playNext();
+    },
+    [playNext],
+  );
+
+  // the user started talking over the bot: drop what it was saying
+  const interrupt = useCallback(() => {
+    audioQueue.current = [];
+    current.current?.pause();
+    current.current = null;
+    dispatch({ type: "_speaking", speaking: false });
   }, []);
 
   useEffect(() => {
@@ -156,14 +190,16 @@ export function useClaimSocket(userId: string, language: Language) {
     socket.onmessage = (msg) => {
       const event: ServerEvent = JSON.parse(msg.data);
       if (event.type === "audio") {
-        audioQueue.current.push(`data:${event.mime};base64,${event.data}`);
-        if (!playing.current) playNext();
+        play(`data:${event.mime};base64,${event.data}`);
         return;
       }
       dispatch(event);
     };
-    return () => socket.close();
-  }, [userId, language, playNext]);
+    return () => {
+      socket.close();
+      interrupt();
+    };
+  }, [userId, language, play, interrupt]);
 
   const send = useCallback((payload: object) => {
     if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(payload));
@@ -189,6 +225,8 @@ export function useClaimSocket(userId: string, language: Language) {
       dispatch({ type: "_sending" });
       send({ type: "decision", decision });
     },
+    play,
+    interrupt,
   };
 }
 

@@ -9,10 +9,18 @@ import type { Profile } from "@/lib/api";
 import { useClaimSocket, type Language } from "@/lib/useClaimSocket";
 
 function Session({ profile, language }: { profile: Profile; language: Language }) {
-  const { state, sendText, sendAudio, sendPhoto, decide } = useClaimSocket(profile.id, language);
+  const { state, sendText, sendAudio, sendPhoto, decide, play, interrupt } = useClaimSocket(profile.id, language);
   return (
     <div className="grid gap-4 py-4 md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px]">
-      <Chat state={state} onText={sendText} onAudio={sendAudio} onPhoto={sendPhoto} onDecide={decide} />
+      <Chat
+        state={state}
+        onText={sendText}
+        onAudio={sendAudio}
+        onPhoto={sendPhoto}
+        onDecide={decide}
+        play={play}
+        interrupt={interrupt}
+      />
       <ClaimPanel state={state} profile={profile} onFile={() => decide("file")} />
     </div>
   );

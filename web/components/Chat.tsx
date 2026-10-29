@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import CallScreen from "@/components/CallScreen";
+import { shrinkImage, toBase64 } from "@/lib/media";
 import type { ClaimState } from "@/lib/useClaimSocket";
 
 type Props = {
@@ -9,29 +11,13 @@ type Props = {
   onAudio: (data: string, mime: string) => void;
   onPhoto: (data: string, mime: string, preview: string) => void;
   onDecide: (d: "claim" | "dont_claim" | "file") => void;
+  play: (src: string) => void;
+  interrupt: () => void;
 };
 
-const toBase64 = (blob: Blob) =>
-  new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
-    reader.readAsDataURL(blob);
-  });
-
-// Phone photos can be 10MB+; shrink to a 1600px JPEG before sending.
-async function shrinkImage(file: File): Promise<{ data: string; preview: string }> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  const preview = canvas.toDataURL("image/jpeg", 0.85);
-  return { data: preview.split(",")[1], preview };
-}
-
-export default function Chat({ state, onText, onAudio, onPhoto, onDecide }: Props) {
+export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, interrupt }: Props) {
   const [text, setText] = useState("");
+  const [onCall, setOnCall] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
@@ -106,7 +92,31 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide }: Prop
             {status}
           </p>
         </div>
+        <button
+          onClick={() => setOnCall(true)}
+          disabled={state.status === "closed" || state.status === "connecting"}
+          className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-40"
+          title="Talk to the assistant hands-free, like a phone call"
+        >
+          <PhoneIcon />
+          Talk
+        </button>
       </div>
+
+      {onCall && (
+        <CallScreen
+          state={state}
+          onAudio={onAudio}
+          onPhoto={onPhoto}
+          onDecide={onDecide}
+          play={play}
+          interrupt={interrupt}
+          onEnd={() => {
+            interrupt();
+            setOnCall(false);
+          }}
+        />
+      )}
 
       <div className="flex-1 space-y-3 overflow-y-auto bg-canvas/50 px-4 py-5 sm:px-6">
         {state.messages.map((m, i) => (
@@ -233,6 +243,11 @@ const MicIcon = () => (
   <svg {...iconProps}>
     <rect x="9" y="2" width="6" height="12" rx="3" />
     <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
+  </svg>
+);
+const PhoneIcon = () => (
+  <svg {...iconProps} width={14} height={14}>
+    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
   </svg>
 );
 const SendIcon = () => (

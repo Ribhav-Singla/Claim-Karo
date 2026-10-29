@@ -13,8 +13,8 @@ from models import Language
 log = logging.getLogger("sarvam")
 
 BASE_URL = "https://api.sarvam.ai"
-STT_MODEL = "saaras:v4"
-TTS_MODEL = "bulbul:v3"
+STT_MODEL = os.getenv("SARVAM_STT_MODEL", "saaras:v4")
+TTS_MODEL = os.getenv("SARVAM_TTS_MODEL", "bulbul:v3")
 LANG_CODE = {"hi": "hi-IN", "en": "en-IN"}
 
 

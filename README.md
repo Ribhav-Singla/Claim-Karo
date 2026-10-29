@@ -320,6 +320,8 @@ GET  /users/{user_id}/dashboard          policies (with vehicle + required docum
 GET  /users/{user_id}/claims/{session_id}       one claim: form, document checklist,
                                                 verdict, photos, conversation
 POST /users/{user_id}/claims/{session_id}/file  file a draft; {reference_no} (409 if filed)
+GET  /voice/fillers?language=hi          {clips: [base64 mp3], mime}: short "okay…" clips in the
+                                         bot's voice, played on the call screen while it thinks
 WS  /ws?user_id=u_ravi&language=hi       one socket = one conversation
 ```
 
@@ -350,6 +352,7 @@ state            {state}
 filed            {reference_no}
 error            {code, message}
 stt_failed       {}
+turn_done        {}                           # last event of every turn (call screen listens again)
 ```
 
 Messages on one socket are handled one at a time, in arrival order.

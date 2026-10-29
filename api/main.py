@@ -27,7 +27,9 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 import db  # noqa: E402
 from agent.graph import Agent  # noqa: E402
+from agent.lines import FILLERS  # noqa: E402
 from seed import load_wallet  # noqa: E402
+from services import sarvam  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("ws")
@@ -100,6 +102,23 @@ async def file_claim(user_id: str, session_id: str) -> dict:
     return {"reference_no": reference_no}
 
 
+_filler_audio: dict[str, list[str]] = {}
+
+
+@app.get("/voice/fillers")
+async def voice_fillers(language: str = "hi") -> dict:
+    """Short "okay…" clips in the bot's voice for the call screen; synthesized once, then cached."""
+    if language not in FILLERS:
+        raise HTTPException(400, "language must be hi or en")
+    if language not in _filler_audio:
+        clips = await asyncio.gather(*(sarvam.synthesize(t, language) for t in FILLERS[language]))
+        ready = [c for c in clips if c]
+        if not ready:
+            return {"clips": [], "mime": "audio/mpeg"}  # TTS down: don't cache, try next call
+        _filler_audio[language] = ready
+    return {"clips": _filler_audio[language], "mime": "audio/mpeg"}
+
+
 @app.websocket("/ws")
 async def conversation(ws: WebSocket, user_id: str, language: str = "hi") -> None:
     await ws.accept()
@@ -134,8 +153,17 @@ async def conversation(ws: WebSocket, user_id: str, language: str = "hi") -> Non
             except Exception as e:  # noqa: BLE001 - report to the client, keep the socket open
                 log.exception("turn failed")
                 await ws.send_json({"type": "error", "code": "turn_failed", "message": str(e)})
+            await turn_done()
+
+    async def turn_done() -> None:
+        # every message and audio clip of the turn has been sent; the call screen may listen again
+        try:
+            await emit({"type": "turn_done"})
+        except (WebSocketDisconnect, RuntimeError):
+            pass
 
     await agent.start()
+    await turn_done()
     tasks: set[asyncio.Task] = set()
     try:
         while True:
