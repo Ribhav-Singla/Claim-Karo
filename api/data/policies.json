@@ -19,7 +19,10 @@
     "add_on_covers": [],
     "excluded_conditions": ["drunk_driving", "no_valid_dl", "commercial_use"],
     "required_documents": ["rc", "dl", "policy_copy", "garage_estimate"],
-    "cashless_garage_names": ["Royal Garage Sector 18", "Bullet Point Motors Noida"]
+    "cashless_garage_names": [
+      "Royal Garage Sector 18",
+      "Bullet Point Motors Noida"
+    ]
   },
   {
     "id": "POL-PRIYA-4W",
@@ -41,7 +44,10 @@
     "add_on_covers": ["zero_dep", "rsa"],
     "excluded_conditions": ["drunk_driving", "no_valid_dl", "commercial_use"],
     "required_documents": ["rc", "dl", "policy_copy", "garage_estimate"],
-    "cashless_garage_names": ["Sharma Motors Noida", "Hyundai Prime Service Gurugram"]
+    "cashless_garage_names": [
+      "Sharma Motors Noida",
+      "Hyundai Prime Service Gurugram"
+    ]
   },
   {
     "id": "POL-PRIYA-4W-2",

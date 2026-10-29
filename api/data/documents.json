@@ -1,7 +1,27 @@
 [
-  {"document_code": "rc", "name_english": "Registration certificate (RC)", "name_hindi": "रजिस्ट्रेशन सर्टिफ़िकेट (RC)"},
-  {"document_code": "dl", "name_english": "Driving licence", "name_hindi": "ड्राइविंग लाइसेंस"},
-  {"document_code": "policy_copy", "name_english": "Policy copy", "name_hindi": "पॉलिसी की कॉपी"},
-  {"document_code": "garage_estimate", "name_english": "Garage estimate", "name_hindi": "गैराज का एस्टिमेट"},
-  {"document_code": "fir", "name_english": "FIR copy", "name_hindi": "FIR की कॉपी"}
+  {
+    "document_code": "rc",
+    "name_english": "Registration certificate (RC)",
+    "name_hindi": "रजिस्ट्रेशन सर्टिफ़िकेट (RC)"
+  },
+  {
+    "document_code": "dl",
+    "name_english": "Driving licence",
+    "name_hindi": "ड्राइविंग लाइसेंस"
+  },
+  {
+    "document_code": "policy_copy",
+    "name_english": "Policy copy",
+    "name_hindi": "पॉलिसी की कॉपी"
+  },
+  {
+    "document_code": "garage_estimate",
+    "name_english": "Garage estimate",
+    "name_hindi": "गैराज का एस्टिमेट"
+  },
+  {
+    "document_code": "fir",
+    "name_english": "FIR copy",
+    "name_hindi": "FIR की कॉपी"
+  }
 ]
