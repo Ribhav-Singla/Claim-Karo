@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Chat from "@/components/Chat";
 import ClaimPanel from "@/components/ClaimPanel";
+import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
 import type { Profile } from "@/lib/api";
 import { useClaimSocket, type Language } from "@/lib/useClaimSocket";
@@ -26,10 +27,17 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [language, setLanguage] = useState<Language>("hi");
   const [run, setRun] = useState(0); // bump to start a fresh conversation
+  const [view, setView] = useState<"dashboard" | "chat">("dashboard");
 
   function login(p: Profile) {
     setProfile(p);
     setLanguage(p.language);
+    setView("dashboard");
+  }
+
+  function newClaim() {
+    setRun((r) => r + 1);
+    setView("chat");
   }
 
   return (
@@ -60,8 +68,16 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+              {view === "chat" && (
+                <button
+                  onClick={() => setView("dashboard")}
+                  className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-sky"
+                >
+                  My claims
+                </button>
+              )}
               <button
-                onClick={() => setRun((r) => r + 1)}
+                onClick={newClaim}
                 className="hidden rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-sky sm:block"
               >
                 New claim
@@ -88,8 +104,10 @@ export default function Home() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4">
-        {profile ? (
+        {profile && view === "chat" ? (
           <Session key={`${profile.id}-${language}-${run}`} profile={profile} language={language} />
+        ) : profile ? (
+          <Dashboard profile={profile} language={language} onNewClaim={newClaim} />
         ) : (
           <Login onLogin={login} />
         )}

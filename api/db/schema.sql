@@ -33,8 +33,22 @@ CREATE TABLE IF NOT EXISTS policies (
     voluntary_deductible_inr   int  NOT NULL,
     addons                     jsonb NOT NULL DEFAULT '[]',
     exclusions                 jsonb NOT NULL DEFAULT '[]',
-    required_documents         jsonb NOT NULL DEFAULT '[]',
     cashless_garages           jsonb NOT NULL DEFAULT '[]'
+);
+
+-- Every document an insurer can ask for (copied from data/documents.json on startup).
+-- Codes match services/rules.py and evidence kinds.
+CREATE TABLE IF NOT EXISTS documents (
+    code     text PRIMARY KEY,
+    name_en  text NOT NULL,
+    name_hi  text NOT NULL
+);
+
+-- Documents each policy asks for on every claim (copied from data/policies.json on startup).
+CREATE TABLE IF NOT EXISTS policy_required_documents (
+    policy_id      text NOT NULL REFERENCES policies(id) ON DELETE CASCADE,
+    document_code  text NOT NULL REFERENCES documents(code),
+    PRIMARY KEY (policy_id, document_code)
 );
 
 -- One row per WebSocket conversation.
@@ -92,10 +106,17 @@ CREATE TABLE IF NOT EXISTS claims (
     claim_type           text NOT NULL,
     status               text NOT NULL DEFAULT 'draft',   -- 'draft' | 'filed'
     form                 jsonb NOT NULL,
-    missing_docs         jsonb NOT NULL DEFAULT '[]',
     settlement_days_min  int,
     settlement_days_max  int,
     reference_no         text UNIQUE,
     created_at           timestamptz NOT NULL DEFAULT now(),
     filed_at             timestamptz
+);
+
+-- One claim's document checklist: every document it needs, and whether we already have it.
+CREATE TABLE IF NOT EXISTS claim_documents (
+    session_id     text NOT NULL REFERENCES claims(session_id) ON DELETE CASCADE,
+    document_code  text NOT NULL REFERENCES documents(code),
+    provided       boolean NOT NULL DEFAULT false,
+    PRIMARY KEY (session_id, document_code)
 );

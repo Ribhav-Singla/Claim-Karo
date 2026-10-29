@@ -79,7 +79,7 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
                 ▼                                               ▲
 ┌──────────────────────────────── FastAPI backend ─────────────────────────────────┐
 │  main.py            WebSocket /ws — one Agent per connection                     │
-│  agent/             state_machine.py  ← one handler per state                    │
+│  agent/             graph.py  ← LangGraph: one node per step, checkpointed state │
 │  services/          claude.py  sarvam.py  rules.py  settlement.py                │
 │  db/                asyncpg pool, schema.sql (applied on startup)                │
 │  data/              policies.json  users.json  settlement_table.json             │
@@ -91,8 +91,12 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
 
 ### Design decisions (do not relitigate)
 
-1. **Plain Python state machine, not LangGraph/agents.** Each state has exactly one job and
-   one Claude call with a forced JSON schema. Predictable on stage.
+1. **LangGraph graph with deterministic routing, not a free-roaming agent.** Each client
+   message is one graph run: a router picks the node from (phase, message type), each node
+   has exactly one job and at most one Claude call with a forced JSON schema, and the
+   checkpointer (`thread_id` = session id) carries state between turns. The LLM never picks
+   the next step, so it stays predictable on stage. Sarvam STT/TTS stays outside the graph,
+   so text works on its own when Sarvam is down.
 2. **Rules decide, Claude explains.** All money math lives in `services/rules.py` and is
    unit-tested. Claude receives the computed numbers and writes the explanation. Claude
    never computes deductibles, NCB or payouts.
@@ -105,8 +109,9 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
    Claude writes the user-facing reply in `session.language` → Sarvam TTS.
 6. **Transport**: **one WebSocket per conversation** (`/ws?user_id=&language=`). Browser
    sends text, audio (base64), photos (base64) and decisions as JSON; server pushes every
-   event back on the same socket. The agent keeps working state in memory and writes
-   through to Postgres (sessions, messages, incidents, evidence, claims).
+   event back on the same socket. Nodes stream events through LangGraph's custom stream.
+   Working state lives in an in-memory checkpointer (dropped when the socket closes) and
+   is written through to Postgres (sessions, messages, incidents, evidence, claims).
 7. **Push-to-talk only.** No VAD, no always-on mic, no barge-in.
 8. **Text is always visible.** Every bot utterance is rendered as text; voice is additive.
 9. **Synthetic data only.** Nothing calls a real insurer or Paytm.
@@ -179,7 +184,8 @@ class Evidence:
     file_path, accepted: bool, issues: list[str], confidence: float
 class Claim:
     id, incident_id, policy_id, claim_type ("own_damage"|"third_party"|"both")
-    status: "draft"|"filed", form: dict, missing_docs: list[str]
+    status: "draft"|"filed", form: dict
+    documents: {code: provided}          # checklist, stored in claim_documents
     settlement_days_min, settlement_days_max, reference_no
 class Session:
     id, user_id, state, language, history: list[dict], created_at
@@ -309,6 +315,11 @@ Checked against docs.sarvam.ai on 2026-10-28.
 ```
 GET /users/lookup?phone=9000011111       login stand-in: wallet user + vehicles + policies
                                          (matches the last 10 digits; 404 if unknown)
+GET  /users/{user_id}/dashboard          policies (with vehicle + required documents) and
+                                         claims (newest first) for the dashboard
+GET  /users/{user_id}/claims/{session_id}       one claim: form, document checklist,
+                                                verdict, photos, conversation
+POST /users/{user_id}/claims/{session_id}/file  file a draft; {reference_no} (409 if filed)
 WS  /ws?user_id=u_ravi&language=hi       one socket = one conversation
 ```
 
@@ -347,13 +358,18 @@ Messages on one socket are handled one at a time, in arrival order.
 
 ## 10. Frontend (`web/`)
 
-Next.js (App Router) + Tailwind v4. Single page, two columns on desktop, stacked on mobile.
+Next.js (App Router) + Tailwind v4. Single page with two views after login, the dashboard
+and the claim conversation; two columns on desktop, stacked on mobile.
 
 Paytm-inspired theme (navy `#002E6E`, cyan `#00BAF2`), tokens in `app/globals.css`.
 
 - `components/Login.tsx` — mobile-number entry (+91), calls `/users/lookup`; demo numbers
   9000011111 (Ravi, Hindi) and 9000022222 (Priya, English) as one-tap chips.
-- `app/page.tsx` — header (language toggle, new claim, user, log out), then the session.
+- `app/page.tsx` — header (language toggle, my claims, new claim, user, log out), then the
+  dashboard (after login) or the conversation (on New claim).
+- `components/Dashboard.tsx` — claims list (draft / filed), selected claim's details
+  (document checklist, verdict, form, photos, conversation; File claim on drafts), and
+  the user's policies with the documents a claim on each needs.
 - `components/Chat.tsx` — messages, hold-to-talk mic (MediaRecorder), text input,
   photo upload in `EVIDENCE` (resized to 1600px JPEG), claim / don't-claim buttons.
 - `components/ClaimPanel.tsx` — progress stepper, verdict card, the user's vehicles and
@@ -376,7 +392,7 @@ claim-karo/
 ├── api/
 │   ├── main.py                 # FastAPI app + WebSocket /ws
 │   ├── db/                     # __init__.py (asyncpg queries), schema.sql
-│   ├── agent/state_machine.py  # Agent: one per connection
+│   ├── agent/graph.py          # LangGraph flow + Agent: one per connection
 │   ├── services/               # claude.py sarvam.py rules.py settlement.py
 │   ├── models.py               # Pydantic
 │   ├── seed.py                 # loads data/*.json into models
@@ -386,8 +402,8 @@ claim-karo/
 │   └── tests/test_rules.py
 ├── web/                        # Next.js app
 │   ├── app/                    # layout.tsx page.tsx globals.css
-│   ├── components/             # Chat.tsx ClaimPanel.tsx
-│   └── lib/useClaimSocket.ts
+│   ├── components/             # Chat.tsx ClaimPanel.tsx Dashboard.tsx Login.tsx
+│   └── lib/                    # useClaimSocket.ts api.ts format.ts
 └── docs/
     ├── DEMO_SCENARIOS.md
     └── pitch/Claim_Karo_Pitch.pptx
@@ -403,8 +419,10 @@ Env vars (`api/.env`): `ANTHROPIC_API_KEY`, `SARVAM_API_KEY`, `CLAUDE_MODEL`,
 Needs Docker Desktop, Python 3.13 (`py` launcher) and Node 22.
 
 ```
-.\start.ps1            # Docker, frontend production build, then API and web (next start) in their own windows
-.\stop.ps1             # stop everything, keep the data
+.\start.ps1            # Docker, empty the database, frontend production build, then API and web
+                       # (next start) in their own windows; the API recreates the tables and reseeds
+.\start.ps1 -KeepData  # same, but keep sessions and claims from earlier runs
+.\stop.ps1             # stop everything (data stays until the next .\start.ps1)
 .\stop.ps1 -Reset      # stop everything and delete the database + CloudBeaver volumes
 ```
 
@@ -417,8 +435,10 @@ The first run creates `api/.venv`, `api/.env` and `web/node_modules`.
 | CloudBeaver | http://localhost:8978 | opens anonymously with the `Claim Karo (Postgres)` connection; admin `cbadmin` / `ClaimKaro123` |
 | Postgres | `localhost:5433`, db `claim_karo` | `claimkaro` / `claimkaro` |
 
-Tables: `users`, `vehicles`, `policies` (copied from `data/*.json` on every start),
-`sessions`, `messages`, `incidents` (with verdict + viability JSON), `evidence`, `claims`.
+Tables: `users`, `vehicles`, `policies`, `policy_required_documents`, `documents`
+(catalog with English/Hindi names) — all copied from `data/*.json` on every start —
+`sessions`, `messages`, `incidents` (with verdict + viability JSON), `evidence`, `claims`,
+`claim_documents` (each claim's document checklist).
 All credentials are local-dev only.
 
 ### Running the backend tests
@@ -484,7 +504,7 @@ voice in and voice out, no console errors.
 ## 15. Conventions
 
 - Python 3.11+, `ruff` formatting, type hints everywhere, Pydantic v2.
-- No business logic in `main.py`; it calls the state machine; the state machine calls services.
+- No business logic in `main.py`; it calls the agent graph; graph nodes call services.
 - Every Claude tool has a fixture test with a canned response.
 - Commit small and often; `main` must always run Scenario 1.
 - Log every Claude/Sarvam call with latency to `logs/` — we will tune from this.

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
+from datetime import date
 from pathlib import Path
 
 import asyncpg
@@ -45,6 +47,11 @@ async def close() -> None:
 async def _seed_wallet(conn: asyncpg.Connection) -> None:
     wallet = load_wallet()
     await conn.executemany(
+        """INSERT INTO documents (code, name_en, name_hi) VALUES ($1, $2, $3)
+           ON CONFLICT (code) DO UPDATE SET name_en = $2, name_hi = $3""",
+        [(d.code, d.name_en, d.name_hi) for d in wallet.documents.values()],
+    )
+    await conn.executemany(
         """INSERT INTO users (id, name, language, phone) VALUES ($1, $2, $3, $4)
            ON CONFLICT (id) DO UPDATE SET name = $2, language = $3, phone = $4""",
         [(u.id, u.name, u.language, u.phone) for u in wallet.users.values()],
@@ -59,14 +66,29 @@ async def _seed_wallet(conn: asyncpg.Connection) -> None:
             for v in wallet.vehicles.values()
         ],
     )
-    columns = list(next(iter(wallet.policies.values())).model_dump().keys())
+    # required_documents lives in its own table, so it is left out of the policies row.
+    rows = [p.model_dump(exclude={"required_documents"}) for p in wallet.policies.values()]
+    columns = list(rows[0].keys())
     placeholders = ", ".join(f"${i}" for i in range(1, len(columns) + 1))
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in columns if c != "id")
     await conn.executemany(
         f"""INSERT INTO policies ({", ".join(columns)}) VALUES ({placeholders})
             ON CONFLICT (id) DO UPDATE SET {updates}""",
-        [tuple(p.model_dump().values()) for p in wallet.policies.values()],
+        [tuple(r.values()) for r in rows],
     )
+    async with conn.transaction():
+        await conn.execute(
+            "DELETE FROM policy_required_documents WHERE policy_id = ANY($1)",
+            list(wallet.policies),
+        )
+        await conn.executemany(
+            "INSERT INTO policy_required_documents (policy_id, document_code) VALUES ($1, $2)",
+            [
+                (p.id, code)
+                for p in wallet.policies.values()
+                for code in dict.fromkeys(p.required_documents)
+            ],
+        )
 
 
 async def create_session(session_id: str, user_id: str, state: str, language: str) -> None:
@@ -154,38 +176,141 @@ async def save_claim(
     policy_id: str,
     claim_type: str,
     form: dict,
-    missing_docs: list[str],
+    documents: dict[str, bool],
     days: tuple[int, int],
 ) -> None:
-    await pool().execute(
-        """INSERT INTO claims (session_id, policy_id, claim_type, form, missing_docs,
-               settlement_days_min, settlement_days_max)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT (session_id) DO UPDATE SET claim_type = $3, form = $4,
-               missing_docs = $5, settlement_days_min = $6, settlement_days_max = $7""",
-        session_id,
-        policy_id,
-        claim_type,
-        form,
-        missing_docs,
-        *days,
-    )
+    """Save the draft claim and its document checklist ({document code: provided})."""
+    async with pool().acquire() as conn, conn.transaction():
+        await conn.execute(
+            """INSERT INTO claims (session_id, policy_id, claim_type, form,
+                   settlement_days_min, settlement_days_max)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (session_id) DO UPDATE SET claim_type = $3, form = $4,
+                   settlement_days_min = $5, settlement_days_max = $6""",
+            session_id,
+            policy_id,
+            claim_type,
+            form,
+            *days,
+        )
+        await conn.execute("DELETE FROM claim_documents WHERE session_id = $1", session_id)
+        await conn.executemany(
+            """INSERT INTO claim_documents (session_id, document_code, provided)
+               VALUES ($1, $2, $3)""",
+            [(session_id, code, provided) for code, provided in documents.items()],
+        )
 
 
-async def file_claim(session_id: str, reference_no: str) -> None:
-    await pool().execute(
-        """UPDATE claims SET status = 'filed', reference_no = $2, filed_at = now()
-           WHERE session_id = $1""",
-        session_id,
-        reference_no,
+async def file_claim(session_id: str) -> str | None:
+    """File a draft claim and return its new reference number (None if it isn't a draft)."""
+    reference_no = f"CK-{date.today():%y%m%d}-{secrets.token_hex(3).upper()}"
+    async with pool().acquire() as conn, conn.transaction():
+        filed = await conn.fetchval(
+            """UPDATE claims SET status = 'filed', reference_no = $2, filed_at = now()
+               WHERE session_id = $1 AND status = 'draft'
+               RETURNING reference_no""",
+            session_id,
+            reference_no,
+        )
+        if filed:
+            await conn.execute(
+                "UPDATE sessions SET state = 'FILED', updated_at = now() WHERE id = $1",
+                session_id,
+            )
+    return filed
+
+
+async def user_policies(user_id: str) -> list[dict]:
+    """Every policy the user holds, with its vehicle and the documents a claim on it needs."""
+    rows = await pool().fetch(
+        """SELECT p.id, p.insurer, p.policy_no, p.cover_type, p.period_start, p.period_end,
+                  p.idv_inr, p.ncb_pct, p.addons,
+                  p.compulsory_deductible_inr + p.voluntary_deductible_inr AS deductible_inr,
+                  jsonb_build_object('id', v.id, 'type', v.type, 'reg_no', v.reg_no,
+                                     'make_model', v.make_model, 'year', v.year) AS vehicle,
+                  coalesce(jsonb_agg(jsonb_build_object('code', d.code, 'name_en', d.name_en,
+                                                        'name_hi', d.name_hi)
+                                     ORDER BY d.name_en) FILTER (WHERE d.code IS NOT NULL),
+                           '[]') AS required_documents
+           FROM policies p
+           JOIN vehicles v ON v.id = p.vehicle_id
+           LEFT JOIN policy_required_documents r ON r.policy_id = p.id
+           LEFT JOIN documents d ON d.code = r.document_code
+           WHERE p.user_id = $1
+           GROUP BY p.id, v.id
+           ORDER BY p.period_end DESC""",
+        user_id,
     )
+    return [dict(r) for r in rows]
+
+
+async def user_claims(user_id: str) -> list[dict]:
+    """The user's claims, newest first, with enough to list them."""
+    rows = await pool().fetch(
+        """SELECT c.session_id, c.status, c.reference_no, c.claim_type, c.created_at,
+                  c.filed_at, c.settlement_days_min, c.settlement_days_max,
+                  p.insurer, p.policy_no, v.make_model, v.reg_no,
+                  i.incident_date, i.estimated_damage_inr, i.verdict,
+                  (c.form ->> 'expected_payout_inr')::int AS expected_payout_inr,
+                  (SELECT count(*) FROM claim_documents cd
+                   WHERE cd.session_id = c.session_id AND NOT cd.provided) AS documents_missing
+           FROM claims c
+           JOIN sessions s ON s.id = c.session_id
+           JOIN policies p ON p.id = c.policy_id
+           JOIN vehicles v ON v.id = p.vehicle_id
+           LEFT JOIN incidents i ON i.session_id = c.session_id
+           WHERE s.user_id = $1
+           ORDER BY c.created_at DESC""",
+        user_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def claim_detail(user_id: str, session_id: str) -> dict | None:
+    """One claim with its checklist, verdict, photos and conversation (None if not the user's)."""
+    async with pool().acquire() as conn:
+        claim = await conn.fetchrow(
+            """SELECT c.session_id, c.status, c.reference_no, c.claim_type, c.form,
+                      c.settlement_days_min, c.settlement_days_max, c.created_at, c.filed_at,
+                      i.verdict, i.viability
+               FROM claims c
+               JOIN sessions s ON s.id = c.session_id
+               LEFT JOIN incidents i ON i.session_id = c.session_id
+               WHERE c.session_id = $1 AND s.user_id = $2""",
+            session_id,
+            user_id,
+        )
+        if claim is None:
+            return None
+        documents = await conn.fetch(
+            """SELECT d.code, d.name_en, d.name_hi, cd.provided
+               FROM claim_documents cd JOIN documents d ON d.code = cd.document_code
+               WHERE cd.session_id = $1
+               ORDER BY cd.provided, d.name_en""",
+            session_id,
+        )
+        evidence = await conn.fetch(
+            """SELECT id, kind, accepted, issues, confidence, created_at FROM evidence
+               WHERE session_id = $1 ORDER BY created_at""",
+            session_id,
+        )
+        messages = await conn.fetch(
+            "SELECT role, text, created_at FROM messages WHERE session_id = $1 ORDER BY id",
+            session_id,
+        )
+    return {
+        **dict(claim),
+        "documents": [dict(r) for r in documents],
+        "evidence": [dict(r) for r in evidence],
+        "messages": [dict(r) for r in messages],
+    }
 
 
 async def find_user_by_phone(mobile: str) -> dict | None:
     """Look up a wallet user by the last 10 digits of their phone, with vehicles + policies."""
     async with pool().acquire() as conn:
         user = await conn.fetchrow(
-            """SELECT id, name, language, phone FROM users
+            r"""SELECT id, name, language, phone FROM users
                WHERE right(regexp_replace(phone, '\D', '', 'g'), 10) = $1""",
             mobile,
         )

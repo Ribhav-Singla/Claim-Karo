@@ -210,18 +210,22 @@ def viability(
     )
 
 
-def missing_documents(incident: Incident, policy: Policy, evidence: list[Evidence]) -> list[str]:
+def required_documents(incident: Incident, policy: Policy) -> list[str]:
+    """Every document this claim needs: the policy's list, plus an FIR if the incident needs one."""
     required = list(policy.required_documents)
     if fir_required(incident) and "fir" not in required:
         required.append("fir")
+    return list(dict.fromkeys(required))
 
+
+def missing_documents(incident: Incident, policy: Policy, evidence: list[Evidence]) -> list[str]:
     have = {e.kind for e in evidence if e.accepted} | WALLET_DOCS
     if incident.garage_estimate_uploaded or is_cashless(incident, policy):
         have.add("garage_estimate")
     if incident.police_report_filed:
         have.add("fir")
 
-    return [doc for doc in dict.fromkeys(required) if doc not in have]
+    return [doc for doc in required_documents(incident, policy) if doc not in have]
 
 
 def required_photo_kinds(incident: Incident, vehicle: Vehicle) -> list[str]:

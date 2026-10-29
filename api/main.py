@@ -26,12 +26,11 @@ from fastapi.encoders import jsonable_encoder  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
 import db  # noqa: E402
-from agent.state_machine import Agent  # noqa: E402
+from agent.graph import Agent  # noqa: E402
 from seed import load_wallet  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 log = logging.getLogger("ws")
-
 
 
 @asynccontextmanager
@@ -60,6 +59,45 @@ async def lookup_user(phone: str) -> dict:
     if user is None:
         raise HTTPException(404, "No Paytm account found for this number")
     return user
+
+
+def _known_user(user_id: str) -> None:
+    if user_id not in load_wallet().users:
+        raise HTTPException(404, "Unknown user")
+
+
+@app.get("/users/{user_id}/dashboard")
+async def dashboard(user_id: str) -> dict:
+    """The user's policies (with required documents) and claims, for the dashboard."""
+    _known_user(user_id)
+    return {
+        "policies": await db.user_policies(user_id),
+        "claims": await db.user_claims(user_id),
+    }
+
+
+@app.get("/users/{user_id}/claims/{session_id}")
+async def claim_detail(user_id: str, session_id: str) -> dict:
+    _known_user(user_id)
+    claim = await db.claim_detail(user_id, session_id)
+    if claim is None:
+        raise HTTPException(404, "Claim not found")
+    return claim
+
+
+@app.post("/users/{user_id}/claims/{session_id}/file")
+async def file_claim(user_id: str, session_id: str) -> dict:
+    """File a draft claim from the dashboard, without going back to the conversation."""
+    _known_user(user_id)
+    claim = await db.claim_detail(user_id, session_id)
+    if claim is None:
+        raise HTTPException(404, "Claim not found")
+    if claim["status"] != "draft":
+        raise HTTPException(409, "This claim is already filed")
+    reference_no = await db.file_claim(session_id)
+    if reference_no is None:
+        raise HTTPException(409, "This claim is already filed")
+    return {"reference_no": reference_no}
 
 
 @app.websocket("/ws")
@@ -107,3 +145,6 @@ async def conversation(ws: WebSocket, user_id: str, language: str = "hi") -> Non
     except WebSocketDisconnect:
         for task in tasks:
             task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        await agent.close()  # drop the in-memory checkpoint once no turn can write to it

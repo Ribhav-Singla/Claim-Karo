@@ -1,5 +1,9 @@
 # Starts everything: Postgres + CloudBeaver (Docker), FastAPI backend, Next.js frontend.
-# Usage: .\start.ps1        (stop with .\stop.ps1)
+# Every start wipes the database; the backend then recreates the tables and reseeds them.
+# Usage: .\start.ps1             fresh database every time
+#        .\start.ps1 -KeepData   keep sessions and claims from earlier runs
+#        (stop with .\stop.ps1)
+param([switch]$KeepData)
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $api = Join-Path $root "api"
@@ -15,6 +19,18 @@ if (Test-Path $pidFile) {
 Write-Host "Starting Postgres and CloudBeaver..." -ForegroundColor Cyan
 docker compose -f (Join-Path $root "docker-compose.yml") up -d --wait postgres cloudbeaver
 if ($LASTEXITCODE -ne 0) { throw "docker compose failed. Is Docker Desktop running?" }
+
+# Fresh data: drop every table. The backend applies db/schema.sql and copies data/*.json
+# back in when it starts (step 4), so this only has to empty the database.
+if ($KeepData) {
+    Write-Host "Keeping existing data (-KeepData)." -ForegroundColor Yellow
+} else {
+    Write-Host "Deleting old data..." -ForegroundColor Cyan
+    docker compose -f (Join-Path $root "docker-compose.yml") exec -T postgres `
+        psql -v ON_ERROR_STOP=1 -q -U claimkaro -d claim_karo `
+        -c "SET client_min_messages = warning; DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+    if ($LASTEXITCODE -ne 0) { throw "Could not reset the database." }
+}
 
 # 2. First-run setup
 if (-not (Test-Path (Join-Path $api ".env"))) {
@@ -40,7 +56,8 @@ $buildExit = $LASTEXITCODE
 Pop-Location
 if ($buildExit -ne 0) { throw "Frontend build failed. Fix the errors above and run .\start.ps1 again." }
 
-# 4. Backend and frontend, each in its own window so logs stay visible
+# 4. Backend and frontend, each in its own window so logs stay visible.
+#    The backend creates the tables and seeds users, vehicles, policies and documents on startup.
 $backend = Start-Process powershell -PassThru -WorkingDirectory $api -ArgumentList @(
     "-NoExit", "-Command",
     "`$Host.UI.RawUI.WindowTitle = 'Claim Karo API'; & '$python' -m uvicorn main:app --reload --port 8000"

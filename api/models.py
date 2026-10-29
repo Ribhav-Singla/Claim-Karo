@@ -1,4 +1,4 @@
-"""Pydantic v2 models shared by the API, state machine and services. See README §5."""
+"""Pydantic v2 models shared by the API, agent graph and services. See README §5."""
 
 from __future__ import annotations
 
@@ -27,6 +27,12 @@ SessionState = Literal[
     "NO_COVER",
     "ADVISED_NO_CLAIM",
 ]
+
+
+class Document(BaseModel):
+    code: str
+    name_en: str
+    name_hi: str
 
 
 class User(BaseModel):
