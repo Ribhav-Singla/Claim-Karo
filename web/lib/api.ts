@@ -1,5 +1,5 @@
-// REST calls to the FastAPI backend (the conversation itself runs over the WebSocket).
-import type { Language } from "./useClaimSocket";
+// REST calls to the FastAPI backend (the conversation itself runs in a LiveKit room).
+import type { Language } from "./useClaim";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -119,6 +119,15 @@ export const fetchDashboard = (userId: string) => request<DashboardData>(`/users
 
 export const fetchClaim = (userId: string, sessionId: string) =>
   request<ClaimDetail>(`/users/${userId}/claims/${sessionId}`);
+
+// Joins a new LiveKit room with the claim agent dispatched into it.
+export const fetchLiveKitToken = async (userId: string, language: Language) => {
+  const body = await request<{ server_url: string; participant_token: string }>(
+    `/livekit/token?user_id=${encodeURIComponent(userId)}&language=${language}`,
+    { method: "POST" },
+  );
+  return { serverUrl: body.server_url, participantToken: body.participant_token };
+};
 
 export const fileClaim = (userId: string, sessionId: string) =>
   request<{ claim_reference_number: string }>(`/users/${userId}/claims/${sessionId}/file`, { method: "POST" });

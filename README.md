@@ -47,12 +47,12 @@ If the policy has an **NCB Protect** add-on, the verdict flips to "claim" for sm
 
 | Priority | Feature | Owner |
 |---|---|---|
-| P0 | Push-to-talk voice intake (Sarvam STT) + text fallback | B |
+| P0 | Hands-free voice intake (LiveKit + Sarvam STT) + text fallback | B |
 | P0 | Incident extraction to structured JSON (Claude, structured output) | A |
 | P0 | Policy matching from synthetic wallet | A |
 | P0 | Viability rules engine + Claude explanation in user's language | A |
 | P0 | Photo upload + vision grading with retake guidance | A/B |
-| P0 | Live claim-form panel that fills as fields arrive (WebSocket) | B |
+| P0 | Live claim-form panel that fills as fields arrive (LiveKit `claim.state`) | B |
 | P0 | Missing-document checklist | A |
 | P0 | Settlement estimate (lookup table) | A |
 | P0 | TTS replies (Sarvam) with pre-generated audio for fixed lines | B |
@@ -71,48 +71,51 @@ Do not start a P1 item until every P0 item works end to end in Scenario 1.
 ┌──────────────────────────────── Browser (Next.js) ──────────────────────────────┐
 │  Chat column                          │  Claim panel                            │
 │  - bot/user bubbles (text always)     │  - form fields animate in as found      │
-│  - push-to-talk mic button            │  - photo thumbnails with ✓ / retake     │
+│  - hands-free talk (mic toggle)       │  - photo thumbnails with ✓ / retake     │
 │  - photo upload                       │  - viability verdict card               │
-│  - audio player for TTS               │  - missing docs, settlement estimate    │
+│  - LiveKit plays the agent's voice    │  - missing docs, settlement estimate    │
 └───────────────┬───────────────────────┴──────────────────────┬──────────────────┘
-                │ WebSocket /ws (audio / text / photo / decision ⇄ events, JSON)          
-                ▼                                               ▲
-┌──────────────────────────────── FastAPI backend ─────────────────────────────────┐
-│  main.py            WebSocket /ws — one Agent per connection                     │
-│  agent/             graph.py  ← LangGraph: one node per step, checkpointed state │
-│  services/          claude.py  sarvam.py  rules.py  settlement.py                │
-│  db/                asyncpg pool, schema.sql (applied on startup)                │
-│  data/              policies.json  users.json  settlement_table.json             │
-│  static/audio/      pre-generated TTS for fixed bot lines                        │
+   POST /livekit/token (REST)  │  WebRTC room: mic audio, lk.chat text, "photo" bytes ⇄
+                               │  agent audio, lk.transcription, "claim.state" snapshots
+┌──────────────────────────────┴──── LiveKit server (Docker, :7880) ─────────────────┐
+└──────────────────────────────┬─────────────────────────────────────────────────────┘
+┌──────────────────────────────┴──── Voice agent (agent/claim_agent.py) ─────────────┐
+│  AgentSession: Silero VAD + turn detector, Sarvam STT/TTS, Claude LLM + tools       │
+│  tools → services/rules.py (money), db (Postgres); photos → claude.py (vision)      │
 └──────────────────────────────────────────────────────────────────────────────────┘
-        │ Claude API (Sonnet: text + vision)   │ Sarvam API (STT + TTS)   │ Postgres (Docker)
+┌──────────────────────────────── FastAPI backend (main.py) ───────────────────────┐
+│  wallet lookup, dashboard, file-from-dashboard, LiveKit tokens                    │
+│  db/  asyncpg, schema.sql (applied on startup)   data/  policies.json users.json  │
+└──────────────────────────────────────────────────────────────────────────────────┘
+        │ Claude API (text + vision)   │ Sarvam API (streaming STT + TTS)   │ Postgres (Docker)
                                                                         ▲ CloudBeaver :8978
 ```
 
 ### Design decisions (do not relitigate)
 
-1. **LangGraph graph with deterministic routing, not a free-roaming agent.** Each client
-   message is one graph run: a router picks the node from (phase, message type), each node
-   has exactly one job and at most one Claude call with a forced JSON schema, and the
-   checkpointer (`thread_id` = session id) carries state between turns. The LLM never picks
-   the next step, so it stays predictable on stage. Sarvam STT/TTS stays outside the graph,
-   so text works on its own when Sarvam is down.
+1. **A LiveKit voice agent whose tools enforce the steps.** LiveKit Agents runs the call
+   (WebRTC audio, voice activity and turn detection, interruptions, typed chat). Claude
+   leads the conversation, but every step goes through a tool (`record_incident`,
+   `start_claim`, `decline_claim`, `file_claim`) that checks the current stage and refuses
+   out-of-order calls; photos are graded outside the LLM; filing is gated in `db.file_claim`.
 2. **Rules decide, Claude explains.** All money math lives in `services/rules.py` and is
    unit-tested. Claude receives the computed numbers and writes the explanation. Claude
    never computes deductibles, NCB or payouts.
 3. **Policies are hand-written structured JSON**, not PDFs in a vector store.
-4. **One model**: latest Sonnet (`claude-sonnet-5-5`, set via `CLAUDE_MODEL`) for
-   extraction, explanation and vision. Every call uses structured outputs
-   (`client.messages.parse` with a Pydantic `output_format`); retry once on validation
-   failure. Sonnet 5.5 rejects forced `tool_choice` and custom `temperature`, so no tool use.
-5. **Language flow**: STT text (Hindi/English) → Claude works internally in English →
-   Claude writes the user-facing reply in `session.language` → Sarvam TTS.
-6. **Transport**: **one WebSocket per conversation** (`/ws?user_id=&language=`). Browser
-   sends text, audio (base64), photos (base64) and decisions as JSON; server pushes every
-   event back on the same socket. Nodes stream events through LangGraph's custom stream.
-   Working state lives in an in-memory checkpointer (dropped when the socket closes) and
-   is written through to Postgres (sessions, messages, incidents, evidence, claims).
-7. **Push-to-talk only.** No VAD, no always-on mic, no barge-in.
+4. **One model**: Claude (`CLAUDE_MODEL`) runs the conversation through the LiveKit
+   Anthropic plugin at low effort, and grades photos with structured outputs
+   (`client.messages.parse` with a Pydantic `output_format`; retry once on validation
+   failure). Sonnet 5.5 rejects forced `tool_choice`, so tools are never forced.
+5. **Language flow**: Sarvam STT auto-detects Hindi/English; the agent replies in the
+   language the user last spoke or typed, and switches the TTS language to match.
+6. **Transport**: **one LiveKit room per conversation.** `POST /livekit/token` creates the
+   room and dispatches the `claim-karo` agent into it. Typed chat uses `lk.chat`, replies
+   arrive as `lk.transcription`, photos as byte streams on `photo`, and the agent sends the
+   whole claim as one JSON snapshot on `claim.state` after every change. Working state
+   lives in the agent session and is written through to Postgres.
+7. **Hands-free, no barge-in.** The mic is off until the user taps it; LiveKit decides when
+   the user has finished. While the bot speaks, the mic audio is not transcribed: on laptop
+   speakers the mic hears the bot, and that echo would otherwise interrupt it.
 8. **Text is always visible.** Every bot utterance is rendered as text; voice is additive.
 9. **Synthetic data only.** Nothing calls a real insurer or Paytm.
 
@@ -127,14 +130,14 @@ INTAKE ──► MATCH_POLICY ──► VIABILITY ──► EVIDENCE ──► F
                     └──► NO_COVER
 ```
 
-| State | Input | Does | Claude call | Emits (WS) | Next |
+| State | Input | Does | Claude call | Tool / trigger | Next |
 |---|---|---|---|---|---|
-| `INTAKE` | user utterance | Extract/merge `Incident`. If required fields missing, ask one targeted question. | `extract_incident` (tool) | `transcript`, `field` ×N, `bot_message`, `audio` | self (ask) or `MATCH_POLICY` |
-| `MATCH_POLICY` | Incident | Filter user's policies by vehicle reg + date in period + cover type. | none (rules) | `policy_matched` | `VIABILITY` or `NO_COVER` |
-| `VIABILITY` | Incident + Policy | `rules.viability()` → numbers + verdict. Claude explains in user language. Ask "claim karna hai?" | `explain_verdict` | `viability`, `bot_message`, `audio` | `EVIDENCE` (yes) / `ADVISED_NO_CLAIM` (no) |
-| `EVIDENCE` | photo | `vision.grade_photo()` against checklist. Retake or accept. Loop until required shots present. | `grade_damage_photo` (vision tool) | `photo_graded`, `bot_message`, `audio` | self or `FORM_REVIEW` |
-| `FORM_REVIEW` | — | Assemble `ClaimForm`, compute missing docs, settlement estimate. Read summary aloud. | `summarise_claim` | `form_ready`, `missing_docs`, `settlement`, `bot_message`, `audio` | `FILED` on user tap |
-| `FILED` | user tap | Persist, show reference number. | none | `filed` | end |
+| `INTAKE` | user utterance | Extract/merge `Incident`. If required fields missing, ask one targeted question. | conversation LLM | `record_incident` | self (ask) or `MATCH_POLICY` |
+| `MATCH_POLICY` | Incident | Filter user's policies by vehicle reg + date in period + cover type. | none (rules) | inside `record_incident` | `VIABILITY` or `NO_COVER` |
+| `VIABILITY` | Incident + Policy | `rules.viability()` → numbers + verdict. Claude explains in user language. Ask "claim karna hai?" | conversation LLM | `start_claim` / `decline_claim` | `EVIDENCE` (yes) / `ADVISED_NO_CLAIM` (no) |
+| `EVIDENCE` | photo | `vision.grade_photo()` against checklist. Retake or accept. Loop until required shots present. | `grade_damage_photo` (vision) | `photo` byte stream | self or `FORM_REVIEW` |
+| `FORM_REVIEW` | — | Assemble `ClaimForm`, compute missing docs, settlement estimate. Read summary aloud. | conversation LLM | after the last photo | `FILED` on user tap |
+| `FILED` | user tap | Persist, show reference number. | none | `file_claim` | end |
 
 Required `Incident` fields to leave `INTAKE`: `vehicle_ref` (or vehicle type if only one
 in wallet), `incident_date`, `description`, `estimated_repair_cost_inr` (can be "unknown" →
@@ -303,20 +306,12 @@ Photo checklist for `grade_damage_photo` (surveyor requirements):
 
 ---
 
-## 8. Sarvam integration (`services/sarvam.py`)
+## 8. Sarvam integration (LiveKit plugin `livekit-plugins-sarvam`)
 
-Checked against docs.sarvam.ai on 2026-10-28.
-
-- **STT**: `POST https://api.sarvam.ai/speech-to-text`, header `api-subscription-key`,
-  multipart `file` + `model=saaras:v4` + `language_code=unknown` (auto-detect). Returns
-  `transcript` + `language_code`; the detected language becomes the session language.
-  Timeout 8 s; on failure emit `stt_failed` and the user types instead.
-- **TTS**: `POST https://api.sarvam.ai/text-to-speech`, JSON `{text, language_code
-  (hi-IN|en-IN), model: "bulbul:v3", speaker, output_audio_codec: "mp3"}`. Returns
-  base64 in `audios[0]`, sent straight to the browser in the `audio` event. Speaker from
-  `SARVAM_TTS_SPEAKER` (default `shubh`; v3 voices: shubh, aditya, ritu, priya, neha, …).
-- **Later**: cache TTS by `(text, lang)` hash, pre-generate fixed lines
-  (`scripts/pregen_audio.py`), sentence-level TTS for long replies.
+- **STT**: streaming `saaras:v4` (`SARVAM_STT_MODEL`) with `language="unknown"`, so Hindi
+  and English are auto-detected; the detected language steers the reply language.
+- **TTS**: streaming `SARVAM_TTS_MODEL` (e.g. `bulbul:v4-flash`) with `SARVAM_TTS_SPEAKER`
+  (e.g. `shubh_enhi_companion`); `target_language_code` follows the user (`hi-IN`/`en-IN`).
 
 ---
 
@@ -329,43 +324,22 @@ GET  /users/{user_id}/dashboard          policies (with vehicle + required docum
                                          claims (newest first) for the dashboard
 GET  /users/{user_id}/claims/{session_id}       one claim: form, document checklist,
                                                 verdict, photos, conversation
-POST /users/{user_id}/claims/{session_id}/file  file a draft; {reference_no} (409 if filed)
-GET  /voice/fillers?language=hi          {clips: [base64 mp3], mime}: short "okay…" clips in the
-                                         bot's voice, played on the call screen while it thinks
-WS  /ws?user_id=u_ravi&language=hi       one socket = one conversation
+POST /users/{user_id}/claims/{session_id}/file  file a draft; {claim_reference_number}
+                                                (409 if filed or documents don't match)
+POST /livekit/token?user_id=u_ravi&language=hi  {server_url, participant_token}: a new room
+                                                with the claim-karo agent dispatched into it
 ```
 
-Client → server (JSON):
+LiveKit room topics (one room = one conversation):
 
 ```
-{"type": "text",     "text": "..."}
-{"type": "audio",    "data": "<base64>", "mime": "audio/webm"}
-{"type": "photo",    "data": "<base64>", "mime": "image/jpeg", "photo_id": "<uuid>"}
-{"type": "decision", "decision": "claim" | "dont_claim" | "file"}
+lk.chat          browser → agent   typed text (and the claim / don't-claim / file buttons)
+lk.transcription agent → browser   what the user said and what the agent says
+photo            browser → agent   byte stream; file name "<photo id>.jpg"
+claim.state      agent → browser   JSON snapshot after every change:
+                 {state, fields, policy, viability, photos: {<id>: {status, evidence_type,
+                  quality_issues}}, form, missingDocs, settlement, referenceNo}
 ```
-
-Server → client, `{"type": <name>, ...fields}`, in the order a turn typically produces them:
-
-```
-transcript       {text, language}
-bot_thinking     {}                           # UI shows pulsing indicator
-field            {name, value}                # one per extracted/updated incident field
-policy_matched   {policy_id, insurer, policy_no, cover_type, ncb_pct, deductible_inr, addons}
-viability        {...Viability}
-photo_graded     {photo_id, kind, accepted, issues, retake_instruction}
-form_ready       {form}
-missing_docs     {docs: [..]}
-settlement       {min_days, max_days, route, docs_complete}
-bot_message      {text, language}             # always, before audio
-audio            {data (base64 mp3), mime}
-state            {state}
-filed            {reference_no}
-error            {code, message}
-stt_failed       {}
-turn_done        {}                           # last event of every turn (call screen listens again)
-```
-
-Messages on one socket are handled one at a time, in arrival order.
 
 ---
 
@@ -383,12 +357,13 @@ Paytm-inspired theme (navy `#002E6E`, cyan `#00BAF2`), tokens in `app/globals.cs
 - `components/Dashboard.tsx` — claims list (draft / filed), selected claim's details
   (document checklist, verdict, form, photos, conversation; File claim on drafts), and
   the user's policies with the documents a claim on each needs.
-- `components/Chat.tsx` — messages, hold-to-talk mic (MediaRecorder), text input,
-  photo upload in `EVIDENCE` (resized to 1600px JPEG), claim / don't-claim buttons.
+- `components/Chat.tsx` — messages, tap-to-talk mic, text input, photo upload in
+  `EVIDENCE` (resized to 1600px JPEG), claim / don't-claim buttons; the mic button turns hands-free talking on and off.
 - `components/ClaimPanel.tsx` — progress stepper, verdict card, the user's vehicles and
   policies (until one is matched), incident fields, policy, verdict card, photo grid with
   ✓ / retake, claim form, missing docs, settlement, File claim button.
-- `lib/useClaimSocket.ts` — owns the WebSocket, reduces events into state, queues audio.
+- `lib/useClaim.ts` — the LiveKit session's messages, agent state, mic, photo upload and the
+  latest `claim.state` snapshot, as one `ClaimState`.
 
 Never block the UI on audio; text appears first.
 
@@ -399,14 +374,14 @@ Never block the UI on audio; text appears first.
 ```
 claim-karo/
 ├── README.md                   ← this file
-├── docker-compose.yml          # Postgres 17 + CloudBeaver
+├── docker-compose.yml          # Postgres 17 + CloudBeaver + LiveKit server
 ├── docker/cloudbeaver/         # preset CloudBeaver connection (copied in on first run)
 ├── start.ps1 / stop.ps1        # start / stop everything
 ├── api/
-│   ├── main.py                 # FastAPI app + WebSocket /ws
+│   ├── main.py                 # FastAPI app + LiveKit token endpoint
 │   ├── db/                     # __init__.py (asyncpg queries), schema.sql
-│   ├── agent/graph.py          # LangGraph flow + Agent: one per connection
-│   ├── services/               # claude.py sarvam.py rules.py settlement.py
+│   ├── agent/claim_agent.py    # LiveKit voice agent: tools, photo grading, state
+│   ├── services/               # claude.py rules.py settlement.py
 │   ├── models.py               # Pydantic
 │   ├── seed.py                 # loads data/*.json into models
 │   ├── data/                   # users.json policies.json settlement_table.json
@@ -416,23 +391,24 @@ claim-karo/
 ├── web/                        # Next.js app
 │   ├── app/                    # layout.tsx page.tsx globals.css
 │   ├── components/             # Chat.tsx ClaimPanel.tsx Dashboard.tsx Login.tsx
-│   └── lib/                    # useClaimSocket.ts api.ts format.ts
+│   └── lib/                    # useClaim.ts api.ts format.ts media.ts
 └── docs/
     ├── DEMO_SCENARIOS.md
     └── pitch/Claim_Karo_Pitch.pptx
 ```
 
 Env vars (`api/.env`): `ANTHROPIC_API_KEY`, `SARVAM_API_KEY`, `CLAUDE_MODEL`,
-`SARVAM_TTS_SPEAKER`, `DATABASE_URL`, `CORS_ORIGINS` (optional). Web (`web/.env.local`, optional):
-`NEXT_PUBLIC_WS_URL` (default `ws://localhost:8000/ws`), `NEXT_PUBLIC_API_URL`
-(default `http://localhost:8000`).
+`SARVAM_STT_MODEL`, `SARVAM_TTS_MODEL`, `SARVAM_TTS_SPEAKER`, `DATABASE_URL`,
+`LIVEKIT_URL` / `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` (dev server: `ws://localhost:7880`,
+`devkey`, `secret`), `CORS_ORIGINS` (optional). Web (`web/.env.local`, optional):
+`NEXT_PUBLIC_API_URL` (default `http://localhost:8000`).
 
 ### Running locally
 
 Needs Docker Desktop, Python 3.13 (`py` launcher) and Node 22.
 
 ```
-.\start.ps1            # Docker, empty the database, frontend production build, then API and web
+.\start.ps1            # Docker, empty the database, frontend production build, then API, agent and web
                        # (next start) in their own windows; the API recreates the tables and reseeds
 .\start.ps1 -KeepData  # same, but keep sessions and claims from earlier runs
 .\stop.ps1             # stop everything (data stays until the next .\start.ps1)
@@ -444,7 +420,8 @@ The first run creates `api/.venv`, `api/.env` and `web/node_modules`.
 | Service | URL | Login |
 |---|---|---|
 | App | http://localhost:3000 | — |
-| API | http://localhost:8000 (WebSocket `/ws`) | — |
+| API | http://localhost:8000 | — |
+| LiveKit | ws://localhost:7880 (agent worker: `python -m agent.claim_agent dev` in `api/`) | `devkey` / `secret` |
 | CloudBeaver | http://localhost:8978 | opens anonymously with the `Claim Karo (Postgres)` connection; admin `cbadmin` / `ClaimKaro123` |
 | Postgres | `localhost:5433`, db `claim_karo` | `claimkaro` / `claimkaro` |
 

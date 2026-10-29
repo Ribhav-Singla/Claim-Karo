@@ -1,4 +1,5 @@
-# Local infra: Postgres + CloudBeaver (DBeaver in the browser). Started by start.ps1.
+# Local infra: Postgres, CloudBeaver (DBeaver in the browser) and the LiveKit media server.
+# Started by start.ps1.
 name: claim-karo
 
 services:
@@ -17,6 +18,16 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # WebRTC media server for the voice agent, dev mode (API key devkey, secret secret).
+  # --node-ip makes it advertise localhost, so the browser and the agent on the host reach it.
+  livekit:
+    image: livekit/livekit-server:v1.13.11
+    command: --dev --bind 0.0.0.0 --node-ip 127.0.0.1
+    ports:
+      - "7880:7880" # signalling (WebSocket)
+      - "7881:7881" # media over TCP
+      - "7882:7882/udp" # media over UDP
 
   # Copies the preset connection into CloudBeaver's workspace on first run only.
   # CloudBeaver rewrites these files (it encrypts the password), so they live in a volume.

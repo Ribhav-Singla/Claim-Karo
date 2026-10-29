@@ -1,26 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { RoomAudioRenderer, SessionProvider, useSession } from "@livekit/components-react";
+import { TokenSource } from "livekit-client";
+import { useEffect, useMemo, useState } from "react";
 import Chat from "@/components/Chat";
 import ClaimPanel from "@/components/ClaimPanel";
 import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
-import type { Profile } from "@/lib/api";
-import { useClaimSocket, type Language } from "@/lib/useClaimSocket";
+import { fetchLiveKitToken, type Profile } from "@/lib/api";
+import { useClaim, type Language } from "@/lib/useClaim";
 
+// One claim conversation = one LiveKit room with the claim agent in it.
 function Session({ profile, language }: { profile: Profile; language: Language }) {
-  const { state, sendText, sendAudio, sendPhoto, decide, play, interrupt } = useClaimSocket(profile.id, language);
+  const tokenSource = useMemo(
+    () => TokenSource.custom(() => fetchLiveKitToken(profile.id, language)),
+    [profile.id, language],
+  );
+  const session = useSession(tokenSource);
+  const { start, end } = session;
+
+  useEffect(() => {
+    // the mic stays off until the user taps it or starts a call
+    start({ tracks: { microphone: { enabled: false } } }).catch(() => {});
+    return () => {
+      end();
+    };
+  }, [start, end]);
+
+  return (
+    <SessionProvider session={session}>
+      <RoomAudioRenderer />
+      <Conversation profile={profile} language={language} />
+    </SessionProvider>
+  );
+}
+
+function Conversation({ profile, language }: { profile: Profile; language: Language }) {
+  const { state, sendText, sendPhoto, decide, setMic } = useClaim(language);
   return (
     <div className="grid gap-4 py-4 md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px]">
-      <Chat
-        state={state}
-        onText={sendText}
-        onAudio={sendAudio}
-        onPhoto={sendPhoto}
-        onDecide={decide}
-        play={play}
-        interrupt={interrupt}
-      />
+      <Chat state={state} onText={sendText} onPhoto={sendPhoto} onDecide={decide} setMic={setMic} />
       <ClaimPanel state={state} profile={profile} onFile={() => decide("file")} />
     </div>
   );

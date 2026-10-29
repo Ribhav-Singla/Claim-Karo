@@ -1,4 +1,4 @@
-"""Pydantic v2 models shared by the API, agent graph and services. See README §5."""
+"""Pydantic v2 models shared by the API, voice agent and services. See README §5."""
 
 from __future__ import annotations
 

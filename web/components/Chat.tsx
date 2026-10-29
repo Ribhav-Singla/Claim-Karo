@@ -1,70 +1,48 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import CallScreen from "@/components/CallScreen";
-import { shrinkImage, toBase64 } from "@/lib/media";
-import type { ClaimState } from "@/lib/useClaimSocket";
+import { useLayoutEffect, useRef, useState } from "react";
+import type { ClaimState } from "@/lib/useClaim";
 
 type Props = {
   state: ClaimState;
   onText: (text: string) => void;
-  onAudio: (data: string, mime: string) => void;
-  onPhoto: (data: string, mime: string, preview: string) => void;
+  onPhoto: (file: File) => void;
   onDecide: (d: "claim" | "dont_claim" | "file") => void;
-  play: (src: string) => void;
-  interrupt: () => void;
+  setMic: (on: boolean) => Promise<unknown>;
 };
 
-export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, interrupt }: Props) {
+export default function Chat({ state, onText, onPhoto, onDecide, setMic }: Props) {
   const [text, setText] = useState("");
-  const [onCall, setOnCall] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const recorder = useRef<MediaRecorder | null>(null);
-  const bottom = useRef<HTMLDivElement>(null);
+  const talking = state.micOn; // hands-free: the mic stays open until the user taps it again
+  const list = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true); // the user is at the bottom of the chat
   const fileInput = useRef<HTMLInputElement>(null);
   const busy = state.status !== "idle";
+  const lastMessage = state.messages[state.messages.length - 1];
+  // dots until the bot's reply starts streaming in, then the reply bubble takes their place
+  const showThinking = state.status === "thinking" && lastMessage?.role !== "bot";
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth" });
-  }, [state.messages, busy]);
+  // Follow the reply as it streams in, without animation and without scrolling the page;
+  // smooth-scrolling on every word made the chat shake. Leave it alone if the user scrolled up.
+  useLayoutEffect(() => {
+    const el = list.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [state.messages, showThinking]);
 
-  async function startRecording() {
-    if (busy || recording) return;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const chunks: Blob[] = [];
-      const rec = new MediaRecorder(stream);
-      rec.ondataavailable = (e) => chunks.push(e.data);
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunks, { type: rec.mimeType });
-        if (blob.size > 0) onAudio(await toBase64(blob), rec.mimeType);
-      };
-      rec.start();
-      recorder.current = rec;
-      setRecording(true);
-    } catch {
-      alert("Microphone not available. Please type instead.");
-    }
+  // tap the mic to talk hands-free: LiveKit hears when you've finished; tap again to stop
+  function toggleMic() {
+    setMic(!state.micOn).catch(() => alert("Microphone not available. Please type instead."));
   }
 
-  function stopRecording() {
-    recorder.current?.stop();
-    recorder.current = null;
-    setRecording(false);
-  }
-
-  async function pickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+  function pickPhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    const { data, preview } = await shrinkImage(file);
-    onPhoto(data, "image/jpeg", preview);
+    if (file) onPhoto(file);
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!text.trim() || busy) return;
+    if (!text.trim() || state.status === "connecting" || state.status === "closed") return;
     onText(text.trim());
     setText("");
   }
@@ -73,8 +51,9 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
   const status =
     state.status === "connecting" ? "Connecting…"
     : state.status === "closed" ? "Disconnected"
-    : recording ? "Listening…"
+    : state.speaking ? "Speaking…"
     : state.status === "thinking" ? "Thinking…"
+    : talking ? "Listening…"
     : "Online";
 
   return (
@@ -86,43 +65,29 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                state.status === "closed" ? "bg-red-500" : state.status === "connecting" ? "bg-amber-400" : "bg-emerald-500"
+                state.status === "closed" ? "bg-red-500"
+                : state.status === "connecting" ? "bg-amber-400"
+                : talking ? "animate-pulse bg-red-500"
+                : "bg-emerald-500"
               }`}
             />
-            {status}
+            <span aria-live="polite">{status}</span>
           </p>
         </div>
-        <button
-          onClick={() => setOnCall(true)}
-          disabled={state.status === "closed" || state.status === "connecting"}
-          className="ml-auto flex items-center gap-1.5 rounded-full bg-emerald-500 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-600 disabled:opacity-40"
-          title="Talk to the assistant hands-free, like a phone call"
-        >
-          <PhoneIcon />
-          Talk
-        </button>
       </div>
 
-      {onCall && (
-        <CallScreen
-          state={state}
-          onAudio={onAudio}
-          onPhoto={onPhoto}
-          onDecide={onDecide}
-          play={play}
-          interrupt={interrupt}
-          onEnd={() => {
-            interrupt();
-            setOnCall(false);
-          }}
-        />
-      )}
-
-      <div className="flex-1 space-y-3 overflow-y-auto bg-canvas/50 px-4 py-5 sm:px-6">
-        {state.messages.map((m, i) => (
-          <div key={i} className={`animate-fadein flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+      <div
+        ref={list}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className="flex-1 space-y-3 overflow-y-auto overscroll-contain bg-canvas/50 px-4 py-5 [overflow-anchor:none] sm:px-6"
+      >
+        {state.messages.map((m) => (
+          <div key={m.id} className={`animate-fadein flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
             <p
-              className={`max-w-[85%] whitespace-pre-wrap px-4 py-2.5 text-[15px] leading-relaxed sm:max-w-[75%] ${
+              className={`max-w-[85%] whitespace-pre-wrap break-words px-4 py-2.5 text-[15px] leading-relaxed sm:max-w-[75%] ${
                 m.role === "user"
                   ? "rounded-2xl rounded-br-md bg-navy text-white"
                   : "rounded-2xl rounded-bl-md border border-line bg-white text-ink"
@@ -132,7 +97,7 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
             </p>
           </div>
         ))}
-        {state.status === "thinking" && (
+        {showThinking && (
           <div className="flex w-fit gap-1 rounded-2xl rounded-bl-md border border-line bg-white px-4 py-3" aria-label="thinking">
             {[0, 1, 2].map((i) => (
               <span
@@ -143,24 +108,21 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
             ))}
           </div>
         )}
-        {state.sttFailed && (
-          <p className="text-center text-xs text-amber-700">Couldn&apos;t hear that. Please try again or type.</p>
-        )}
-        {state.error && <p className="text-center text-xs text-red-600">{state.error}</p>}
-        <div ref={bottom} />
       </div>
 
-      {s === "VIABILITY" && !busy && (
+      {s === "VIABILITY" && (
         <div className="flex gap-2 border-t border-line bg-white px-4 pt-3 sm:px-6">
           <button
             onClick={() => onDecide("claim")}
-            className="flex-1 rounded-xl bg-sky py-2.5 text-sm font-semibold text-white transition hover:bg-sky-dark"
+            disabled={busy}
+            className="flex-1 rounded-xl bg-sky py-2.5 text-sm font-semibold text-white transition hover:bg-sky-dark disabled:opacity-40"
           >
             File claim
           </button>
           <button
             onClick={() => onDecide("dont_claim")}
-            className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-navy transition hover:bg-canvas"
+            disabled={busy}
+            className="flex-1 rounded-xl border border-line py-2.5 text-sm font-semibold text-navy transition hover:bg-canvas disabled:opacity-40"
           >
             Don&apos;t claim
           </button>
@@ -180,12 +142,12 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
           <input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={recording ? "Listening… release to send" : "Describe what happened…"}
+            placeholder={talking ? "Listening… just speak, or type" : "Describe what happened…"}
             className="min-w-0 flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-muted"
           />
           <button
             type="submit"
-            disabled={busy || !text.trim()}
+            disabled={!text.trim() || state.status === "connecting" || state.status === "closed"}
             className="grid h-8 w-8 place-items-center rounded-full bg-navy text-white transition disabled:opacity-30"
             title="Send"
           >
@@ -194,16 +156,17 @@ export default function Chat({ state, onText, onAudio, onPhoto, onDecide, play, 
         </div>
         <button
           type="button"
-          onPointerDown={startRecording}
-          onPointerUp={stopRecording}
-          onPointerLeave={() => recording && stopRecording()}
-          disabled={busy}
-          title="Hold to talk"
-          className={`grid h-11 w-11 shrink-0 place-items-center rounded-full text-white shadow-sm transition disabled:opacity-40 ${
-            recording ? "scale-110 bg-red-500 ring-4 ring-red-100" : "bg-sky hover:bg-sky-dark"
+          onClick={toggleMic}
+          disabled={state.status === "connecting" || state.status === "closed"}
+          title={talking ? "Stop talking" : "Tap to talk hands-free"}
+          aria-label={talking ? "Stop talking" : "Talk"}
+          aria-pressed={talking}
+          className={`relative grid h-11 w-11 shrink-0 place-items-center rounded-full text-white shadow-sm transition disabled:opacity-40 ${
+            talking ? "bg-red-500 ring-4 ring-red-100" : "bg-sky hover:bg-sky-dark"
           }`}
         >
-          <MicIcon />
+          {talking && state.speaking && <span className="absolute inset-0 animate-ping rounded-full bg-red-400/40" />}
+          {talking ? <StopIcon /> : <MicIcon />}
         </button>
       </form>
     </section>
@@ -245,9 +208,9 @@ const MicIcon = () => (
     <path d="M5 10a7 7 0 0 0 14 0M12 17v5" />
   </svg>
 );
-const PhoneIcon = () => (
-  <svg {...iconProps} width={14} height={14}>
-    <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z" />
+const StopIcon = () => (
+  <svg {...iconProps}>
+    <rect x="7" y="7" width="10" height="10" rx="2" fill="currentColor" />
   </svg>
 );
 const SendIcon = () => (

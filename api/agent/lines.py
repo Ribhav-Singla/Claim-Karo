@@ -83,13 +83,3 @@ PHOTO_LABEL: dict[str, dict[Language, str]] = {
     "odometer": {"hi": "ओडोमीटर रीडिंग", "en": "the odometer reading"},
     "dl": {"hi": "ड्राइविंग लाइसेंस (सामने की तरफ़)", "en": "your driving licence (front side)"},
 }
-
-# Played on the call screen the moment the user stops talking, so the wait sounds like listening.
-FILLERS: dict[Language, tuple[str, ...]] = {
-    "hi": ("अच्छा…", "जी, एक सेकंड।", "ठीक है…"),
-    "en": ("Okay…", "Got it, one sec.", "Mm-hmm…"),
-}
-
-# Spoken/typed words that count as a yes or no on the "claim karna hai?" question.
-YES = ("haan", "han", "ha", "yes", "ok", "okay", "claim karo", "file", "हाँ", "हां", "जी")
-NO = ("nahi", "nahin", "no", "mat", "नहीं", "ना")

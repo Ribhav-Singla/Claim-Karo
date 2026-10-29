@@ -6,6 +6,7 @@ conversation can be inspected in CloudBeaver (http://localhost:8978).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import secrets
@@ -19,7 +20,9 @@ from seed import load_wallet
 from services import rules
 
 SCHEMA = Path(__file__).with_name("schema.sql")
-_pool: asyncpg.Pool | None = None
+# One pool per event loop: on Windows LiveKit runs each call in its own thread and loop, and
+# an asyncpg pool only works on the loop that created it.
+_pools: dict[asyncio.AbstractEventLoop, asyncpg.Pool] = {}
 
 
 class DocumentsNotVerified(Exception):
@@ -35,22 +38,23 @@ async def _init_conn(conn: asyncpg.Connection) -> None:
 
 
 def pool() -> asyncpg.Pool:
-    if _pool is None:
-        raise RuntimeError("db.init() has not been called")
-    return _pool
+    try:
+        return _pools[asyncio.get_running_loop()]
+    except KeyError:
+        raise RuntimeError("db.init() has not been called on this event loop") from None
 
 
 async def init() -> None:
-    global _pool
-    _pool = await asyncpg.create_pool(os.environ["DATABASE_URL"], init=_init_conn)
-    async with _pool.acquire() as conn:
+    new_pool = await asyncpg.create_pool(os.environ["DATABASE_URL"], init=_init_conn)
+    _pools[asyncio.get_running_loop()] = new_pool
+    async with new_pool.acquire() as conn:
         await conn.execute(SCHEMA.read_text(encoding="utf-8"))
         await _seed_wallet(conn)
 
 
 async def close() -> None:
-    if _pool is not None:
-        await _pool.close()
+    if (old_pool := _pools.pop(asyncio.get_running_loop(), None)) is not None:
+        await old_pool.close()
 
 
 async def _seed_wallet(conn: asyncpg.Connection) -> None:

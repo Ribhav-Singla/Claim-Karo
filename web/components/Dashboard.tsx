@@ -13,7 +13,7 @@ import {
   type WalletPolicy,
 } from "@/lib/api";
 import { formatDate, label, VERDICT } from "@/lib/format";
-import { rupees, type Language } from "@/lib/useClaimSocket";
+import { rupees, type Language } from "@/lib/useClaim";
 
 const STATUS = {
   draft: { label: "Draft", tone: "bg-amber-50 text-amber-800 ring-amber-200" },

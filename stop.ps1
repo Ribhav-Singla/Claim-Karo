@@ -8,14 +8,14 @@ $pidFile = Join-Path $root ".pids"
 if (Test-Path $pidFile) {
     foreach ($id in Get-Content $pidFile) {
         if ($id) {
-            # /T kills the whole tree (uvicorn reloader, node dev server) started in that window
+            # /T kills the whole tree (uvicorn reloader, agent worker, node server) in that window
             taskkill /T /F /PID $id 2>$null | Out-Null
         }
     }
     Remove-Item $pidFile
-    Write-Host "Stopped backend and frontend." -ForegroundColor Green
+    Write-Host "Stopped backend, voice agent and frontend." -ForegroundColor Green
 } else {
-    Write-Host "No .pids file: backend/frontend not started by start.ps1." -ForegroundColor Yellow
+    Write-Host "No .pids file: backend/agent/frontend not started by start.ps1." -ForegroundColor Yellow
 }
 
 $compose = Join-Path $root "docker-compose.yml"

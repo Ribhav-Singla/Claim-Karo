@@ -2,7 +2,7 @@
 
 import type { Profile } from "@/lib/api";
 import { formatDate, label, VERDICT } from "@/lib/format";
-import { rupees, type ClaimState } from "@/lib/useClaimSocket";
+import { rupees, type ClaimState } from "@/lib/useClaim";
 
 const FIELD_LABELS: Record<string, string> = {
   vehicle_id: "Vehicle",

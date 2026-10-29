@@ -1,38 +1,29 @@
-"""FastAPI app: one WebSocket per conversation. Run: uvicorn main:app --reload
+"""FastAPI app: wallet lookup, dashboard, filing, and LiveKit tokens.
 
-Client -> server messages (JSON):
-  {"type": "text", "text": "..."}
-  {"type": "audio", "data": "<base64>", "mime": "audio/webm"}
-  {"type": "photo", "data": "<base64>", "mime": "image/jpeg", "photo_id": "..."}
-  {"type": "decision", "decision": "claim" | "dont_claim" | "file"}
-Server -> client: {"type": <event>, ...} as listed in README §9.
+Run: uvicorn main:app --reload. The conversation itself runs in the LiveKit agent
+(agent/claim_agent.py); the browser joins its room with a token from POST /livekit/token.
 """
 
 from __future__ import annotations
 
-import asyncio
-import base64
-import logging
 import os
 import re
+import uuid
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect  # noqa: E402
-from fastapi.encoders import jsonable_encoder  # noqa: E402
+from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from livekit import api  # noqa: E402
+from livekit.protocol.agent_dispatch import RoomAgentDispatch  # noqa: E402
+from livekit.protocol.room import RoomConfiguration  # noqa: E402
 
 import db  # noqa: E402
-from agent.graph import Agent  # noqa: E402
-from agent.lines import FILLERS  # noqa: E402
+from agent import AGENT_NAME  # noqa: E402
 from seed import load_wallet  # noqa: E402
-from services import sarvam  # noqa: E402
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-log = logging.getLogger("ws")
 
 
 @asynccontextmanager
@@ -109,77 +100,20 @@ async def file_claim(user_id: str, session_id: str) -> dict:
     return {"claim_reference_number": reference_number}
 
 
-_filler_audio: dict[str, list[str]] = {}
-
-
-@app.get("/voice/fillers")
-async def voice_fillers(language: str = "hi") -> dict:
-    """Short "okay…" clips in the bot's voice for the call screen; synthesized once, then cached."""
-    if language not in FILLERS:
-        raise HTTPException(400, "language must be hi or en")
-    if language not in _filler_audio:
-        clips = await asyncio.gather(*(sarvam.synthesize(t, language) for t in FILLERS[language]))
-        ready = [c for c in clips if c]
-        if not ready:
-            return {"clips": [], "mime": "audio/mpeg"}  # TTS down: don't cache, try next call
-        _filler_audio[language] = ready
-    return {"clips": _filler_audio[language], "mime": "audio/mpeg"}
-
-
-@app.websocket("/ws")
-async def conversation(ws: WebSocket, user_id: str, language: str = "hi") -> None:
-    await ws.accept()
-    wallet = load_wallet()
-    if user_id not in wallet.users or language not in ("hi", "en"):
-        await ws.send_json({"type": "error", "code": "bad_request", "message": "unknown user"})
-        await ws.close()
-        return
-
-    async def emit(event: dict) -> None:
-        await ws.send_json(jsonable_encoder(event))
-
-    agent = Agent(user_id, language, emit)  # type: ignore[arg-type]
-    lock = asyncio.Lock()  # one turn at a time, in arrival order
-
-    async def handle(msg: dict) -> None:
-        async with lock:
-            try:
-                match msg.get("type"):
-                    case "text":
-                        await agent.on_text(msg["text"])
-                    case "audio":
-                        await agent.on_audio(base64.b64decode(msg["data"]), msg["mime"])
-                    case "photo":
-                        await agent.on_photo(
-                            base64.b64decode(msg["data"]), msg["mime"], msg["photo_id"]
-                        )
-                    case "decision":
-                        await agent.on_decision(msg["decision"])
-            except WebSocketDisconnect:
-                pass
-            except Exception as e:  # noqa: BLE001 - report to the client, keep the socket open
-                log.exception("turn failed")
-                await ws.send_json({"type": "error", "code": "turn_failed", "message": str(e)})
-            await turn_done()
-
-    async def turn_done() -> None:
-        # every message and audio clip of the turn has been sent; the call screen may listen again
-        try:
-            await emit({"type": "turn_done"})
-        except (WebSocketDisconnect, RuntimeError):
-            pass
-
-    await agent.start()
-    await turn_done()
-    tasks: set[asyncio.Task] = set()
-    try:
-        while True:
-            task = asyncio.create_task(handle(await ws.receive_json()))
-            tasks.add(task)
-            task.add_done_callback(tasks.discard)
-    except WebSocketDisconnect:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-    finally:
-        await agent.close()  # drop the in-memory checkpoint once no turn can write to it
+@app.post("/livekit/token")
+async def livekit_token(user_id: str, language: str = "hi") -> dict:
+    """Credentials for a new claim conversation: a fresh room with the claim agent in it."""
+    _known_user(user_id)
+    user = load_wallet().users[user_id]
+    room = f"claim-{user_id}-{uuid.uuid4().hex[:8]}"
+    token = (
+        api.AccessToken()  # LIVEKIT_API_KEY / LIVEKIT_API_SECRET
+        .with_identity(user_id)
+        .with_name(user.full_name)
+        # the agent reads who is calling, and in which language to start, from these
+        .with_attributes({"user_id": user_id, "language": "en" if language == "en" else "hi"})
+        .with_grants(api.VideoGrants(room_join=True, room=room))
+        .with_room_config(RoomConfiguration(agents=[RoomAgentDispatch(agent_name=AGENT_NAME)]))
+        .to_jwt()
+    )
+    return {"server_url": os.environ["LIVEKIT_URL"], "participant_token": token}

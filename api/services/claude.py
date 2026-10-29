@@ -1,14 +1,13 @@
-"""Claude calls. Each function is one structured-output request validated by Pydantic.
+"""Claude's photo and document grading, plus the persona shared with the voice agent.
 
-Rules decide, Claude explains: every number Claude mentions comes in through the prompt.
-Sonnet 5.5 rejects forced tool_choice and custom temperature, so we use structured
-outputs (`messages.parse`) instead of tool use.
+The conversation itself runs through the LiveKit agent's LLM (agent/claim_agent.py). Grading
+is one structured-output request validated by Pydantic; Sonnet 5.5 rejects forced
+tool_choice, so we use structured outputs (`messages.parse`) instead of tool use.
 """
 
 from __future__ import annotations
 
 import base64
-import json
 import logging
 import os
 import time
@@ -18,7 +17,7 @@ from typing import Literal, TypeVar
 import anthropic
 from pydantic import BaseModel, ValidationError
 
-from models import Incident, Language, Policy, Vehicle, Viability
+from models import Language
 
 log = logging.getLogger("claude")
 MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-5-5")
@@ -59,88 +58,6 @@ async def _parse(output: type[T], content: list[dict] | str, task: str) -> T:
             if attempt == 1:
                 raise
     raise RuntimeError("unreachable")
-
-
-# --- extract_incident -------------------------------------------------------------------
-
-
-class ExtractedIncident(BaseModel):
-    vehicle_id: str | None
-    incident_date: date | None
-    incident_location: str | None
-    description_english: str | None
-    third_party_involved: bool | None
-    third_party_property_damaged: bool | None
-    anyone_injured: bool | None
-    estimated_repair_cost_inr: int | None
-    estimate_unknown: bool
-    garage_name: str | None
-    police_report_filed: bool | None
-    risk_flags: list[
-        Literal["drunk_driving", "no_valid_dl", "commercial_use", "theft", "hit_and_run"]
-    ]
-    clarifying_question: str | None
-    reply_to_user: str
-
-
-async def extract_incident(
-    incident: Incident, utterance: str, vehicles: list[Vehicle], language: Language
-) -> ExtractedIncident:
-    vehicle_list = "\n".join(
-        f'- id "{v.id}": {v.brand} {v.model} ({v.vehicle_type}), reg {v.vehicle_number}'
-        for v in vehicles
-    )
-    prompt = f"""Task: extract a motor accident incident from the user's latest message.
-Today is {date.today().isoformat()} (resolve "kal"/"yesterday"/"last night" against it).
-
-User's vehicles:
-{vehicle_list}
-
-Incident so far (JSON): {incident.model_dump_json(exclude_none=True)}
-
-Latest user message: "{utterance}"
-
-Rules:
-- Return only what this message adds or changes; use null for anything not mentioned.
-- vehicle_id must be one of the ids above; pick it from make/model/type/reg mentioned.
-  If the user has only one vehicle of the mentioned type, pick that.
-- description_english: one-line English summary of the whole incident so far.
-- estimated_repair_cost_inr: integer rupees ("4200", "4.2k", "chaar hazaar do sau" -> 4200).
-- estimate_unknown: true only if the user says they don't know the cost ("pata nahi").
-- Required to proceed: vehicle, incident date, what happened, and a damage estimate
-  (or estimate_unknown). If anything required is still missing after merging with the
-  incident so far, set clarifying_question to ONE short question for the most important
-  missing item, and make reply_to_user that question. Otherwise clarifying_question is
-  null and reply_to_user is a one-line acknowledgement.
-- reply_to_user must be in {LANG_NAME[language]}."""
-    return await _parse(ExtractedIncident, prompt, "extract_incident")
-
-
-# --- explain_verdict ---------------------------------------------------------------------
-
-
-class Reply(BaseModel):
-    reply_to_user: str
-
-
-async def explain_verdict(
-    viability: Viability, policy: Policy, estimate: int | None, language: Language
-) -> str:
-    prompt = f"""Task: explain the claim viability verdict to the user.
-Language: {LANG_NAME[language]}.
-
-Policy: {policy.insurer_name}, NCB {policy.no_claim_bonus_pct}%,
-addons {policy.add_on_covers or "none"}.
-Damage estimate: {f"₹{estimate:,}" if estimate is not None else "not known yet"}
-Computed result (JSON, already final, do not recompute):
-{viability.model_dump_json()}
-
-Explain in max 3 short sentences: what the insurer would pay, what they would lose in
-No-Claim Bonus (use the 3-year total), and the recommendation. If estimate_pending, say
-claiming makes sense only above breakeven_estimate_inr and ask for the garage estimate.
-If not_covered, say why from the reason codes. End by asking whether they want to file
-the claim (unless not_covered)."""
-    return (await _parse(Reply, prompt, "explain_verdict")).reply_to_user
 
 
 # --- grade_damage_photo ------------------------------------------------------------------
@@ -205,19 +122,3 @@ is printed; never guess unclear characters, use null instead.""",
         },
     ]
     return await _parse(PhotoGrade, content, "grade_damage_photo")
-
-
-# --- summarise_claim ---------------------------------------------------------------------
-
-
-async def summarise_claim(
-    form: dict, missing_docs: list[str], settlement: dict, language: Language
-) -> str:
-    prompt = f"""Task: summarise the pre-filled claim for the user before they file it.
-Language: {LANG_NAME[language]}.
-Claim form: {json.dumps(form, default=str, ensure_ascii=False)}
-Missing documents: {missing_docs or "none"}
-Settlement estimate: {settlement}
-In max 3 sentences: confirm the claim is ready, name any missing documents, give the
-settlement time, and ask them to tap "File claim"."""
-    return (await _parse(Reply, prompt, "summarise_claim")).reply_to_user
