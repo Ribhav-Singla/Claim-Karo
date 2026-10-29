@@ -39,7 +39,7 @@ export default function Home() {
 
   function login(p: Profile) {
     setProfile(p);
-    setLanguage(p.language);
+    setLanguage(p.preferred_language);
     setView("dashboard");
   }
 
@@ -92,11 +92,11 @@ export default function Home() {
               </button>
               <div className="flex items-center gap-2 border-l border-line pl-3">
                 <div className="grid h-8 w-8 place-items-center rounded-full bg-sky-soft text-xs font-semibold text-navy">
-                  {profile.name.split(" ").map((w) => w[0]).join("")}
+                  {profile.full_name.split(" ").map((w) => w[0]).join("")}
                 </div>
                 <div className="hidden leading-tight sm:block">
-                  <p className="text-sm font-medium text-ink">{profile.name}</p>
-                  <p className="text-xs text-muted">{maskPhone(profile.phone)}</p>
+                  <p className="text-sm font-medium text-ink">{profile.full_name}</p>
+                  <p className="text-xs text-muted">{maskPhone(profile.phone_number)}</p>
                 </div>
                 <button
                   onClick={() => setProfile(null)}

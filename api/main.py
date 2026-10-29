@@ -94,12 +94,19 @@ async def file_claim(user_id: str, session_id: str) -> dict:
     claim = await db.claim_detail(user_id, session_id)
     if claim is None:
         raise HTTPException(404, "Claim not found")
-    if claim["status"] != "draft":
+    if claim["claim_status"] != "draft":
         raise HTTPException(409, "This claim is already filed")
-    reference_no = await db.file_claim(session_id)
-    if reference_no is None:
+    try:
+        reference_number = await db.file_claim(session_id)
+    except db.DocumentsNotVerified:
+        raise HTTPException(
+            409,
+            "Can't file yet: the vehicle photo and driving licence must match your policy "
+            "records. Continue the claim in chat to upload them.",
+        ) from None
+    if reference_number is None:
         raise HTTPException(409, "This claim is already filed")
-    return {"reference_no": reference_no}
+    return {"claim_reference_number": reference_number}
 
 
 _filler_audio: dict[str, list[str]] = {}

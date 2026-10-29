@@ -7,15 +7,15 @@ import { rupees, type ClaimState } from "@/lib/useClaimSocket";
 const FIELD_LABELS: Record<string, string> = {
   vehicle_id: "Vehicle",
   incident_date: "Date",
-  location: "Location",
-  description_en: "What happened",
-  estimated_damage_inr: "Damage estimate",
+  incident_location: "Location",
+  description_english: "What happened",
+  estimated_repair_cost_inr: "Damage estimate",
   garage_name: "Garage",
   third_party_involved: "Third party",
-  third_party_damage: "Third-party damage",
-  injuries: "Injuries",
+  third_party_property_damaged: "Third-party damage",
+  anyone_injured: "Injuries",
   police_report_filed: "FIR filed",
-  flags: "Flags",
+  risk_flags: "Flags",
 };
 
 const STEPS = [
@@ -93,12 +93,12 @@ export default function ClaimPanel({
   const { fields, policy, viability, photos, missingDocs, settlement, form, referenceNo } = state;
   const vehicleName = (id: unknown) => {
     const v = profile.vehicles.find((x) => x.id === id);
-    return v ? `${v.make_model} · ${v.reg_no}` : String(id);
+    return v ? `${v.brand} ${v.model} · ${v.vehicle_number}` : String(id);
   };
 
   function show(name: string, value: unknown) {
     if (name === "vehicle_id") return vehicleName(value);
-    if (name === "estimated_damage_inr") return rupees(value);
+    if (name === "estimated_repair_cost_inr") return rupees(value);
     if (name === "incident_date") return formatDate(String(value));
     if (typeof value === "boolean") return value ? "Yes" : "No";
     if (Array.isArray(value)) return value.map(label).join(", ") || "—";
@@ -152,25 +152,27 @@ export default function ClaimPanel({
               <li key={v.id} className="rounded-xl border border-line p-3">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="text-sm font-medium text-ink">{v.make_model}</p>
+                    <p className="text-sm font-medium text-ink">
+                      {v.brand} {v.model}
+                    </p>
                     <p className="text-xs text-muted">
-                      {v.reg_no} · {v.type === "2W" ? "Two-wheeler" : "Car"} · {v.year}
+                      {v.vehicle_number} · {v.vehicle_type === "2W" ? "Two-wheeler" : "Car"} · {v.manufacture_year}
                     </p>
                   </div>
                   {v.policy && (
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        v.policy.cover_type === "comprehensive" ? "bg-sky-soft text-navy" : "bg-canvas text-muted"
+                        v.policy.coverage_type === "comprehensive" ? "bg-sky-soft text-navy" : "bg-canvas text-muted"
                       }`}
                     >
-                      {v.policy.cover_type === "comprehensive" ? "Comprehensive" : "Third-party"}
+                      {v.policy.coverage_type === "comprehensive" ? "Comprehensive" : "Third-party"}
                     </span>
                   )}
                 </div>
                 {v.policy ? (
                   <p className="mt-2 text-xs text-muted">
-                    {v.policy.insurer} · NCB {v.policy.ncb_pct}% · till{" "}
-                    {formatDate(v.policy.period_end)}
+                    {v.policy.insurer_name} · NCB {v.policy.no_claim_bonus_pct}% · till{" "}
+                    {formatDate(v.policy.coverage_end_date)}
                   </p>
                 ) : (
                   <p className="mt-2 text-xs text-red-600">No active policy</p>
@@ -191,10 +193,10 @@ export default function ClaimPanel({
 
       {policy && (
         <Card title="Matched policy">
-          <p className="text-sm font-semibold text-ink">{policy.insurer}</p>
-          <p className="mt-0.5 text-xs text-muted">{policy.policy_no}</p>
+          <p className="text-sm font-semibold text-ink">{policy.insurer_name}</p>
+          <p className="mt-0.5 text-xs text-muted">{policy.policy_number}</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {[label(policy.cover_type), `NCB ${policy.ncb_pct}%`, `Deductible ${rupees(policy.deductible_inr)}`, ...policy.addons.map(label)].map(
+            {[label(policy.coverage_type), `NCB ${policy.no_claim_bonus_pct}%`, `Deductible ${rupees(policy.deductible_inr)}`, ...policy.add_on_covers.map(label)].map(
               (t) => (
                 <span key={t} className="rounded-full bg-canvas px-2.5 py-1 text-xs text-ink">
                   {t}
@@ -211,7 +213,7 @@ export default function ClaimPanel({
             {photos.map((p) => (
               <figure key={p.id} className="relative overflow-hidden rounded-xl border border-line">
                 {/* Local data URL preview, so next/image adds nothing here */}
-                <img src={p.preview} alt={p.kind ?? "photo"} className="aspect-square w-full object-cover" />
+                <img src={p.preview} alt={p.evidence_type ?? "photo"} className="aspect-square w-full object-cover" />
                 <figcaption
                   className={`absolute inset-x-0 bottom-0 px-1.5 py-1 text-center text-[10px] font-semibold text-white ${
                     p.status === "accepted" ? "bg-emerald-600/90" : p.status === "retake" ? "bg-red-600/90" : "bg-navy/70"

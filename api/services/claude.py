@@ -67,16 +67,18 @@ async def _parse(output: type[T], content: list[dict] | str, task: str) -> T:
 class ExtractedIncident(BaseModel):
     vehicle_id: str | None
     incident_date: date | None
-    location: str | None
-    description_en: str | None
+    incident_location: str | None
+    description_english: str | None
     third_party_involved: bool | None
-    third_party_damage: bool | None
-    injuries: bool | None
-    estimated_damage_inr: int | None
+    third_party_property_damaged: bool | None
+    anyone_injured: bool | None
+    estimated_repair_cost_inr: int | None
     estimate_unknown: bool
     garage_name: str | None
     police_report_filed: bool | None
-    flags: list[Literal["drunk_driving", "no_valid_dl", "commercial_use", "theft", "hit_and_run"]]
+    risk_flags: list[
+        Literal["drunk_driving", "no_valid_dl", "commercial_use", "theft", "hit_and_run"]
+    ]
     clarifying_question: str | None
     reply_to_user: str
 
@@ -85,7 +87,8 @@ async def extract_incident(
     incident: Incident, utterance: str, vehicles: list[Vehicle], language: Language
 ) -> ExtractedIncident:
     vehicle_list = "\n".join(
-        f'- id "{v.id}": {v.make_model} ({v.type}), reg {v.reg_no}' for v in vehicles
+        f'- id "{v.id}": {v.brand} {v.model} ({v.vehicle_type}), reg {v.vehicle_number}'
+        for v in vehicles
     )
     prompt = f"""Task: extract a motor accident incident from the user's latest message.
 Today is {date.today().isoformat()} (resolve "kal"/"yesterday"/"last night" against it).
@@ -101,8 +104,8 @@ Rules:
 - Return only what this message adds or changes; use null for anything not mentioned.
 - vehicle_id must be one of the ids above; pick it from make/model/type/reg mentioned.
   If the user has only one vehicle of the mentioned type, pick that.
-- description_en: one-line English summary of the whole incident so far.
-- estimated_damage_inr: integer rupees ("4200", "4.2k", "chaar hazaar do sau" -> 4200).
+- description_english: one-line English summary of the whole incident so far.
+- estimated_repair_cost_inr: integer rupees ("4200", "4.2k", "chaar hazaar do sau" -> 4200).
 - estimate_unknown: true only if the user says they don't know the cost ("pata nahi").
 - Required to proceed: vehicle, incident date, what happened, and a damage estimate
   (or estimate_unknown). If anything required is still missing after merging with the
@@ -126,7 +129,8 @@ async def explain_verdict(
     prompt = f"""Task: explain the claim viability verdict to the user.
 Language: {LANG_NAME[language]}.
 
-Policy: {policy.insurer}, NCB {policy.ncb_pct}%, addons {policy.addons or "none"}.
+Policy: {policy.insurer_name}, NCB {policy.no_claim_bonus_pct}%,
+addons {policy.add_on_covers or "none"}.
 Damage estimate: {f"₹{estimate:,}" if estimate is not None else "not known yet"}
 Computed result (JSON, already final, do not recompute):
 {viability.model_dump_json()}
@@ -158,6 +162,7 @@ CHECKLIST = {
     "number_plate": "number plate legible",
     "odometer": "odometer reading legible",
     "garage_estimate": "document, itemised, total and date legible",
+    "dl": "front of a driving licence; licence number, holder name and validity date legible",
 }
 
 
@@ -167,6 +172,11 @@ class PhotoGrade(BaseModel):
     confidence: float
     retake_instruction: str | None
     damage_observed: str
+    # Read off the photo so rules.verify_details can compare them with the records.
+    number_plate_text: str | None
+    licence_number: str | None
+    licence_holder_name: str | None
+    licence_valid_until: date | None
 
 
 async def grade_damage_photo(
@@ -187,7 +197,11 @@ async def grade_damage_photo(
 Expected shot: {expected_kind} ({CHECKLIST.get(expected_kind, "")}).
 Set accepted=false with issue codes if it fails the requirement. confidence is 0-1.
 retake_instruction: one short sentence in {LANG_NAME[language]} telling the user how to
-retake (null if accepted). damage_observed: short English description of visible damage.""",
+retake (null if accepted). damage_observed: short English description of visible damage.
+number_plate_text: the vehicle's registration number exactly as printed on its number plate
+(null if no plate is legible). For a driving licence: licence_number, licence_holder_name and
+licence_valid_until (YYYY-MM-DD, non-transport validity); null for any other shot. Copy what
+is printed; never guess unclear characters, use null instead.""",
         },
     ]
     return await _parse(PhotoGrade, content, "grade_damage_photo")

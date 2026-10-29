@@ -37,6 +37,42 @@ LINES: dict[str, dict[Language, str]] = {
         "hi": "कृपया फ़ोटो अपलोड करें।",
         "en": "Please upload the photo.",
     },
+    "plate_not_readable": {
+        "hi": "नंबर प्लेट साफ़ नहीं पढ़ी जा रही। कृपया ऐसी फ़ोटो लें जिसमें नंबर प्लेट साफ़ दिखे।",
+        "en": "I can't read the number plate. Please retake the photo with the plate visible.",
+    },
+    "plate_mismatch": {
+        "hi": (
+            "फ़ोटो में नंबर प्लेट {seen} है, पर आपकी बीमित गाड़ी का नंबर {expected} है। "
+            "कृपया इसी गाड़ी की फ़ोटो अपलोड करें।"
+        ),
+        "en": (
+            "The plate in this photo reads {seen}, but your insured vehicle is {expected}. "
+            "Please upload a photo of that vehicle."
+        ),
+    },
+    "dl_not_readable": {
+        "hi": "लाइसेंस साफ़ नहीं पढ़ा जा रहा। कृपया लाइसेंस के सामने की तरफ़ की साफ़ फ़ोटो भेजें।",
+        "en": "I can't read the licence. Please upload a sharp photo of the front of your licence.",
+    },
+    "dl_mismatch": {
+        "hi": (
+            "यह लाइसेंस पॉलिसी लेते समय दिए गए लाइसेंस (नंबर के आख़िरी अंक {last4}) से "
+            "मेल नहीं खाता। कृपया वही लाइसेंस अपलोड करें।"
+        ),
+        "en": (
+            "This licence doesn't match the one given when the policy was issued "
+            "(number ending {last4}). Please upload that licence."
+        ),
+    },
+    "dl_expired": {
+        "hi": "यह लाइसेंस दुर्घटना की तारीख़ पर वैध नहीं था, इसलिए claim फ़ाइल नहीं हो सकता।",
+        "en": "This licence wasn't valid on the date of the accident, so the claim can't be filed.",
+    },
+    "not_verified": {
+        "hi": "claim फ़ाइल करने से पहले गाड़ी की फ़ोटो और ड्राइविंग लाइसेंस पॉलिसी से मेल खाने चाहिए।",
+        "en": "Before filing, the vehicle photo and driving licence must match your policy.",
+    },
 }
 
 PHOTO_LABEL: dict[str, dict[Language, str]] = {
@@ -45,6 +81,7 @@ PHOTO_LABEL: dict[str, dict[Language, str]] = {
         "en": "the whole vehicle with the damage and number plate visible",
     },
     "odometer": {"hi": "ओडोमीटर रीडिंग", "en": "the odometer reading"},
+    "dl": {"hi": "ड्राइविंग लाइसेंस (सामने की तरफ़)", "en": "your driving licence (front side)"},
 }
 
 # Played on the call screen the moment the user stops talking, so the wait sounds like listening.

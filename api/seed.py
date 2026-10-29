@@ -35,5 +35,5 @@ def load_wallet(data_dir: Path = DATA_DIR) -> Wallet:
         users={u["id"]: User(**u) for u in users_raw["users"]},
         vehicles={v["id"]: Vehicle(**v) for v in users_raw["vehicles"]},
         policies={p["id"]: Policy(**p) for p in policies_raw},
-        documents={d["code"]: Document(**d) for d in documents_raw},
+        documents={d["document_code"]: Document(**d) for d in documents_raw},
     )

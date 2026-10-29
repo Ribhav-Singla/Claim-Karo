@@ -25,11 +25,12 @@ const PHOTO_LABEL: Record<string, string> = {
   damage_close: "Damage close-up",
   number_plate: "Number plate",
   odometer: "Odometer",
+  dl: "Driving licence",
 };
 
-const docName = (d: DocumentName, language: Language) => (language === "hi" ? d.name_hi : d.name_en);
+const docName = (d: DocumentName, language: Language) => (language === "hi" ? d.name_hindi : d.name_english);
 
-function StatusPill({ status }: { status: ClaimSummary["status"] }) {
+function StatusPill({ status }: { status: ClaimSummary["claim_status"] }) {
   return (
     <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${STATUS[status].tone}`}>
       {STATUS[status].label}
@@ -75,12 +76,14 @@ function ClaimRow({ claim, active, onSelect }: { claim: ClaimSummary; active: bo
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-ink">{claim.make_model}</p>
+          <p className="truncate text-sm font-semibold text-ink">
+            {claim.brand} {claim.model}
+          </p>
           <p className="text-xs text-muted">
-            {claim.reg_no} · {claim.incident_date ? `Incident ${formatDate(claim.incident_date)}` : "Date not given"}
+            {claim.vehicle_number} · {claim.incident_date ? `Incident ${formatDate(claim.incident_date)}` : "Date not given"}
           </p>
         </div>
-        <StatusPill status={claim.status} />
+        <StatusPill status={claim.claim_status} />
       </div>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
         <div>
@@ -88,8 +91,8 @@ function ClaimRow({ claim, active, onSelect }: { claim: ClaimSummary; active: bo
           <p className="text-base font-semibold text-navy tabular-nums">{rupees(claim.expected_payout_inr)}</p>
         </div>
         <p className="text-xs text-muted">
-          {claim.status === "filed" ? (
-            <span className="font-mono text-ink">{claim.reference_no}</span>
+          {claim.claim_status === "filed" ? (
+            <span className="font-mono text-ink">{claim.claim_reference_number}</span>
           ) : claim.documents_missing > 0 ? (
             <span className="text-amber-700">
               {claim.documents_missing} document{claim.documents_missing > 1 ? "s" : ""} needed
@@ -156,10 +159,10 @@ function ClaimDetailPanel({
     );
   }
 
-  const verdict = claim.verdict ? VERDICT[claim.verdict] : null;
-  const missing = claim.documents.filter((d) => !d.provided);
-  const formRows = Object.entries(claim.form)
-    .filter(([k, v]) => v !== null && v !== undefined && !["policyholder", "phone"].includes(k))
+  const verdict = claim.claim_recommendation ? VERDICT[claim.claim_recommendation] : null;
+  const missing = claim.documents.filter((d) => !d.is_provided);
+  const formRows = Object.entries(claim.claim_form_data)
+    .filter(([k, v]) => v !== null && v !== undefined && !["policyholder", "phone_number"].includes(k))
     .map(([k, v]) => [
       label(k).replace(/ inr$/i, ""),
       k.endsWith("_inr") ? rupees(v) : k.endsWith("_date") ? formatDate(String(v)) : label(String(v)),
@@ -175,25 +178,26 @@ function ClaimDetailPanel({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs text-muted">{label(claim.claim_type)} claim</p>
-            <h2 className="mt-0.5 text-lg font-semibold text-ink">{String(claim.form.vehicle ?? "")}</h2>
+            <h2 className="mt-0.5 text-lg font-semibold text-ink">{String(claim.claim_form_data.vehicle ?? "")}</h2>
             <p className="text-xs text-muted">
-              {String(claim.form.insurer ?? "")} · {String(claim.form.policy_no ?? "")}
+              {String(claim.claim_form_data.insurer_name ?? "")} ·{" "}
+              {String(claim.claim_form_data.policy_number ?? "")}
             </p>
           </div>
-          <StatusPill status={claim.status} />
+          <StatusPill status={claim.claim_status} />
         </div>
 
-        {claim.status === "filed" ? (
+        {claim.claim_status === "filed" ? (
           <div className="mt-4 rounded-xl bg-navy p-4 text-white">
             <p className="text-xs opacity-70">Reference number</p>
-            <p className="mt-1 font-mono text-lg font-semibold tracking-wide">{claim.reference_no}</p>
+            <p className="mt-1 font-mono text-lg font-semibold tracking-wide">{claim.claim_reference_number}</p>
             <p className="mt-1 text-xs opacity-70">Filed {claim.filed_at && formatDate(claim.filed_at)}</p>
           </div>
         ) : (
           <div className="mt-4 rounded-xl bg-amber-50 p-4">
             <p className="text-sm font-semibold text-amber-900">Not filed yet</p>
             <p className="mt-0.5 text-xs text-amber-900/80">
-              Started {formatDate(claim.created_at)}.{" "}
+              Started {formatDate(claim.drafted_at)}.{" "}
               {missing.length > 0
                 ? "You can file now and send the missing documents to the insurer afterwards."
                 : "Everything the insurer needs is in place."}
@@ -210,24 +214,26 @@ function ClaimDetailPanel({
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </header>
 
-      {verdict && claim.viability && (
+      {verdict && claim.viability_assessment && (
         <section className={`rounded-2xl border p-4 ${verdict.tone}`}>
           <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider opacity-70">
             <span className={`h-2 w-2 rounded-full ${verdict.dot}`} />
             Recommendation
           </p>
           <p className="mt-1 text-lg font-semibold">{verdict.label}</p>
-          {claim.verdict !== "not_covered" && (
+          {claim.claim_recommendation !== "not_covered" && (
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-white/70 p-3">
                 <p className="text-xs opacity-70">Insurer pays</p>
                 <p className="mt-0.5 font-bold tabular-nums">
-                  {claim.viability.estimate_pending ? "—" : rupees(claim.viability.insurer_payout_inr)}
+                  {claim.viability_assessment.estimate_pending
+                    ? "—"
+                    : rupees(claim.viability_assessment.insurer_payout_inr)}
                 </p>
               </div>
               <div className="rounded-xl bg-white/70 p-3">
                 <p className="text-xs opacity-70">No-Claim Bonus lost</p>
-                <p className="mt-0.5 font-bold tabular-nums">{rupees(claim.viability.ncb_loss_total_inr)}</p>
+                <p className="mt-0.5 font-bold tabular-nums">{rupees(claim.viability_assessment.ncb_loss_total_inr)}</p>
               </div>
             </div>
           )}
@@ -246,18 +252,18 @@ function ClaimDetailPanel({
         ) : (
           <ul className="space-y-2">
             {claim.documents.map((d) => (
-              <li key={d.code} className="flex items-center gap-3 text-sm">
+              <li key={d.document_code} className="flex items-center gap-3 text-sm">
                 <span
                   aria-hidden
                   className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
-                    d.provided ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                    d.is_provided ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
                   }`}
                 >
-                  {d.provided ? "✓" : "!"}
+                  {d.is_provided ? "✓" : "!"}
                 </span>
                 <span className="min-w-0 flex-1 text-ink">{docName(d, language)}</span>
-                <span className={`text-xs ${d.provided ? "text-muted" : "font-medium text-amber-800"}`}>
-                  {d.provided ? "Have it" : "Needed"}
+                <span className={`text-xs ${d.is_provided ? "text-muted" : "font-medium text-amber-800"}`}>
+                  {d.is_provided ? "Have it" : "Needed"}
                 </span>
               </li>
             ))}
@@ -268,11 +274,11 @@ function ClaimDetailPanel({
       <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Claim form</h3>
         <Rows rows={formRows} />
-        {claim.settlement_days_min !== null && (
+        {claim.expected_settlement_days_min !== null && (
           <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
             Expected settlement in{" "}
             <span className="font-semibold text-ink">
-              {claim.settlement_days_min}–{claim.settlement_days_max} days
+              {claim.expected_settlement_days_min}–{claim.expected_settlement_days_max} days
             </span>
           </p>
         )}
@@ -284,9 +290,9 @@ function ClaimDetailPanel({
           <ul className="space-y-2 text-sm">
             {claim.evidence.map((e) => (
               <li key={e.id} className="flex items-center justify-between gap-3">
-                <span className="text-ink">{PHOTO_LABEL[e.kind] ?? label(e.kind)}</span>
-                <span className={`text-xs font-medium ${e.accepted ? "text-emerald-700" : "text-red-600"}`}>
-                  {e.accepted ? "Accepted" : `Retake: ${e.issues.map(label).join(", ").toLowerCase()}`}
+                <span className="text-ink">{PHOTO_LABEL[e.evidence_type] ?? label(e.evidence_type)}</span>
+                <span className={`text-xs font-medium ${e.is_accepted ? "text-emerald-700" : "text-red-600"}`}>
+                  {e.is_accepted ? "Accepted" : `Retake: ${[...e.detail_mismatches, ...e.quality_issues].map(label).join(", ").toLowerCase()}`}
                 </span>
               </li>
             ))}
@@ -302,13 +308,13 @@ function ClaimDetailPanel({
           </summary>
           <ol className="mt-3 space-y-2">
             {claim.messages.map((m, i) => (
-              <li key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <li key={i} className={`flex ${m.sender_role === "user" ? "justify-end" : "justify-start"}`}>
                 <p
                   className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                    m.role === "user" ? "bg-navy text-white" : "bg-canvas text-ink"
+                    m.sender_role === "user" ? "bg-navy text-white" : "bg-canvas text-ink"
                   }`}
                 >
-                  {m.text}
+                  {m.message_text}
                 </p>
               </li>
             ))}
@@ -322,15 +328,18 @@ function ClaimDetailPanel({
 // --- policies ----------------------------------------------------------------------------
 
 function PolicyCard({ policy, language }: { policy: WalletPolicy; language: Language }) {
-  const active = new Date(policy.period_end) >= new Date();
-  const comprehensive = policy.cover_type === "comprehensive";
+  const active = new Date(policy.coverage_end_date) >= new Date();
+  const comprehensive = policy.coverage_type === "comprehensive";
   return (
     <article className="flex flex-col gap-3 rounded-2xl border border-line bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-ink">{policy.vehicle.make_model}</p>
+          <p className="text-sm font-semibold text-ink">
+            {policy.vehicle.brand} {policy.vehicle.model}
+          </p>
           <p className="text-xs text-muted">
-            {policy.vehicle.reg_no} · {policy.vehicle.type === "2W" ? "Two-wheeler" : "Car"} · {policy.vehicle.year}
+            {policy.vehicle.vehicle_number} · {policy.vehicle.vehicle_type === "2W" ? "Two-wheeler" : "Car"} ·{" "}
+            {policy.vehicle.manufacture_year}
           </p>
         </div>
         <span
@@ -343,26 +352,26 @@ function PolicyCard({ policy, language }: { policy: WalletPolicy; language: Lang
       </div>
 
       <div>
-        <p className="text-sm font-medium text-ink">{policy.insurer}</p>
-        <p className="font-mono text-xs text-muted">{policy.policy_no}</p>
+        <p className="text-sm font-medium text-ink">{policy.insurer_name}</p>
+        <p className="font-mono text-xs text-muted">{policy.policy_number}</p>
       </div>
 
       <Rows
         rows={[
-          ["Valid till", <span className={active ? "" : "text-red-600"}>{formatDate(policy.period_end)}</span>],
-          ["No-Claim Bonus", `${policy.ncb_pct}%`],
+          ["Valid till", <span className={active ? "" : "text-red-600"}>{formatDate(policy.coverage_end_date)}</span>],
+          ["No-Claim Bonus", `${policy.no_claim_bonus_pct}%`],
           ...(comprehensive
             ? ([
-                ["Insured value (IDV)", rupees(policy.idv_inr)],
+                ["Insured value (IDV)", rupees(policy.insured_declared_value_inr)],
                 ["Deductible", rupees(policy.deductible_inr)],
               ] as [string, React.ReactNode][])
             : []),
         ]}
       />
 
-      {policy.addons.length > 0 && (
+      {policy.add_on_covers.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {policy.addons.map((a) => (
+          {policy.add_on_covers.map((a) => (
             <span key={a} className="rounded-full bg-canvas px-2.5 py-1 text-xs text-ink">
               {label(a)}
             </span>
@@ -406,7 +415,7 @@ export default function Dashboard({
 
   useEffect(load, [load]);
 
-  const drafts = data?.claims.filter((c) => c.status === "draft").length ?? 0;
+  const drafts = data?.claims.filter((c) => c.claim_status === "draft").length ?? 0;
   const filed = (data?.claims.length ?? 0) - drafts;
   const uninsured = profile.vehicles.filter((v) => !v.policy);
 
@@ -415,7 +424,7 @@ export default function Dashboard({
       <div className={`min-w-0 space-y-8 ${selected ? "hidden md:block" : ""}`}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-navy">Hi {profile.name.split(" ")[0]}</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-navy">Hi {profile.full_name.split(" ")[0]}</h1>
             <p className="mt-1 text-sm text-muted">Your policies and claims in one place.</p>
           </div>
           <button
@@ -472,7 +481,7 @@ export default function Dashboard({
           )}
           {uninsured.length > 0 && (
             <p className="text-sm text-muted">
-              No active policy for {uninsured.map((v) => `${v.make_model} (${v.reg_no})`).join(", ")}.
+              No active policy for {uninsured.map((v) => `${v.brand} ${v.model} (${v.vehicle_number})`).join(", ")}.
             </p>
           )}
         </Section>

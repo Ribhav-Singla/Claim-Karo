@@ -137,7 +137,7 @@ INTAKE ──► MATCH_POLICY ──► VIABILITY ──► EVIDENCE ──► F
 | `FILED` | user tap | Persist, show reference number. | none | `filed` | end |
 
 Required `Incident` fields to leave `INTAKE`: `vehicle_ref` (or vehicle type if only one
-in wallet), `incident_date`, `description`, `estimated_damage_inr` (can be "unknown" →
+in wallet), `incident_date`, `description`, `estimated_repair_cost_inr` (can be "unknown" →
 agent asks for garage estimate or lets user say "pata nahi" and proceeds with
 `VIABILITY` in "estimate pending" mode).
 
@@ -148,29 +148,34 @@ agent asks for garage estimate or lets user say "pata nahi" and proceeds with
 Stored in Postgres (`api/db/schema.sql`, tables listed in §11); Pydantic models in `models.py`. Synthetic seed data in `data/`.
 
 ```python
-class User:           id, name, language ("hi"|"en"), phone
-class Vehicle:        id, user_id, type ("2W"|"4W"), reg_no, make_model, year
+class User:           id, full_name, preferred_language ("hi"|"en"), phone_number
+class Vehicle:
+    id, user_id, vehicle_type ("2W"|"4W")
+    vehicle_number                       # registration (number plate)
+    brand, model, manufacture_year
 class Policy:
-    id, user_id, vehicle_id, insurer, policy_no
-    cover_type: "comprehensive" | "third_party_only"
-    period_start, period_end
-    idv_inr: int                         # insured declared value
-    od_premium_inr: int                  # own-damage premium (base for NCB math)
-    ncb_pct: 0|20|25|35|45|50
+    id, user_id, vehicle_id, insurer_name, policy_number
+    coverage_type: "comprehensive" | "third_party_only"
+    coverage_start_date, coverage_end_date
+    insured_declared_value_inr: int      # IDV
+    own_damage_premium_inr: int          # base for NCB math
+    no_claim_bonus_pct: 0|20|25|35|45|50
     compulsory_deductible_inr: int       # 100 (2W) / 1000–2000 (4W) typical
     voluntary_deductible_inr: int
-    addons: list["zero_dep"|"ncb_protect"|"engine_protect"|"rsa"|"consumables"]
-    exclusions: list[str]                # e.g. "drunk_driving","no_valid_dl","commercial_use"
+    add_on_covers: list["zero_dep"|"ncb_protect"|"engine_protect"|"rsa"|"consumables"]
+    excluded_conditions: list[str]       # e.g. "drunk_driving","no_valid_dl","commercial_use"
     required_documents: list[str]        # e.g. "rc","dl","policy_copy","garage_estimate","fir"
-    cashless_garages: list[str]
+    cashless_garage_names: list[str]
+    driving_licence_number, driving_licence_holder_name, driving_licence_valid_until
+                                         # DL given at policy issuance; the claim's DL upload must match
 class Incident:
     id, session_id, user_id, vehicle_id
-    incident_date, location, description_en, description_original
-    third_party_involved: bool, third_party_damage: bool, injuries: bool
-    estimated_damage_inr: int | None, garage_estimate_uploaded: bool
+    incident_date, incident_location, description_english, description_user_language
+    third_party_involved: bool, third_party_property_damaged: bool, anyone_injured: bool
+    estimated_repair_cost_inr: int | None, garage_estimate_uploaded: bool
     police_report_filed: bool | None
-    garage_name: str | None              # in policy.cashless_garages → cashless route
-    flags: list[str]                     # "drunk_driving","no_valid_dl","commercial_use",
+    garage_name: str | None              # in policy.cashless_garage_names → cashless route
+    risk_flags: list[str]                # "drunk_driving","no_valid_dl","commercial_use",
                                          # "theft","hit_and_run" — matched against exclusions / FIR rules
 class Viability:
     insurer_payout_inr, deductible_inr, depreciation_inr,
@@ -180,15 +185,20 @@ class Viability:
     ncb_protected: bool
     estimate_pending: bool               # no damage estimate yet; numbers are zero
 class Evidence:
-    id, claim_id, kind ("damage_wide"|"damage_close"|"number_plate"|"odometer"|"garage_estimate"|"dl"|"rc")
-    file_path, accepted: bool, issues: list[str], confidence: float
+    id, claim_id
+    evidence_type ("damage_wide"|"damage_close"|"number_plate"|"odometer"|"garage_estimate"|"dl"|"rc")
+    file_path, is_accepted: bool, quality_issues: list[str], ai_confidence_score: float
+    extracted_details: dict              # number plate / DL fields read off the photo
+    detail_mismatches: list[str]         # rules.verify_details: PLATE_MISMATCH, DL_NUMBER_MISMATCH, ...
+                                         # any mismatch rejects the upload; filing needs a matching
+                                         # vehicle photo and DL (db.file_claim refuses otherwise)
 class Claim:
     id, incident_id, policy_id, claim_type ("own_damage"|"third_party"|"both")
-    status: "draft"|"filed", form: dict
-    documents: {code: provided}          # checklist, stored in claim_documents
-    settlement_days_min, settlement_days_max, reference_no
+    claim_status: "draft"|"filed", claim_form_data: dict
+    documents: {document_code: is_provided}   # checklist, stored in claim_documents
+    expected_settlement_days_min, expected_settlement_days_max, claim_reference_number
 class Session:
-    id, user_id, state, language, history: list[dict], created_at
+    id, user_id, conversation_stage, conversation_language, history: list[dict], started_at
 ```
 
 ### Synthetic seed data

@@ -13,17 +13,17 @@ export type Photo = {
   id: string;
   preview: string;
   status: "grading" | "accepted" | "retake";
-  kind?: string;
-  issues?: string[];
+  evidence_type?: string;
+  quality_issues?: string[];
 };
 export type Policy = {
   policy_id: string;
-  insurer: string;
-  policy_no: string;
-  cover_type: string;
-  ncb_pct: number;
+  insurer_name: string;
+  policy_number: string;
+  coverage_type: string;
+  no_claim_bonus_pct: number;
   deductible_inr: number;
-  addons: string[];
+  add_on_covers: string[];
 };
 export type Viability = {
   verdict: "claim" | "dont_claim" | "borderline" | "not_covered";
@@ -125,7 +125,12 @@ function reducer(s: ClaimState, e: Action): ClaimState {
         ...s,
         photos: s.photos.map((p) =>
           p.id === e.photo_id
-            ? { ...p, kind: e.kind, issues: e.issues, status: e.accepted ? "accepted" : "retake" }
+            ? {
+                ...p,
+                evidence_type: e.evidence_type,
+                quality_issues: e.quality_issues,
+                status: e.is_accepted ? "accepted" : "retake",
+              }
             : p,
         ),
       };
@@ -136,7 +141,7 @@ function reducer(s: ClaimState, e: Action): ClaimState {
     case "settlement":
       return { ...s, settlement: e as unknown as Settlement };
     case "filed":
-      return { ...s, referenceNo: e.reference_no };
+      return { ...s, referenceNo: e.claim_reference_number };
     case "stt_failed":
       return { ...s, status: "idle", sttFailed: true };
     case "error":

@@ -105,18 +105,49 @@ def read_decision(msg: dict) -> str | None:
 
 
 def intake_complete(incident: Incident, estimate_unknown: bool) -> bool:
-    has_estimate = incident.estimated_damage_inr is not None or estimate_unknown
+    has_estimate = incident.estimated_repair_cost_inr is not None or estimate_unknown
     return bool(
-        incident.vehicle_id and incident.incident_date and incident.description_en and has_estimate
+        incident.vehicle_id
+        and incident.incident_date
+        and incident.description_english
+        and has_estimate
     )
+
+
+# What Claude reads off each kind of upload, for rules.verify_details to check.
+READ_FIELDS: dict[str, set[str]] = {
+    "damage_wide": {"number_plate_text"},
+    "dl": {"licence_number", "licence_holder_name", "licence_valid_until"},
+}
+
+
+def mismatch_line(state: ClaimState, codes: list[str], details: dict) -> str:
+    """Tell the user which detail didn't match the records and what to upload instead."""
+    policy = state["policy"]
+    assert policy is not None
+    if "PLATE_NOT_READABLE" in codes:
+        return line(state, "plate_not_readable")
+    if "PLATE_MISMATCH" in codes:
+        vehicle = load_wallet().vehicles[policy.vehicle_id]
+        return line(
+            state,
+            "plate_mismatch",
+            seen=details["number_plate_text"],
+            expected=vehicle.vehicle_number,
+        )
+    if "DL_NUMBER_MISMATCH" in codes or "DL_NAME_MISMATCH" in codes:
+        return line(state, "dl_mismatch", last4=policy.driving_licence_number[-4:])
+    if "DL_EXPIRED_ON_INCIDENT_DATE" in codes:
+        return line(state, "dl_expired")
+    return line(state, "dl_not_readable")
 
 
 def next_photo_kind(state: ClaimState) -> str | None:
     policy = state["policy"]
     assert policy is not None
     vehicle = load_wallet().vehicles[policy.vehicle_id]
-    done = {e.kind for e in state["evidence"] if e.accepted}
-    pending = [k for k in rules.required_photo_kinds(state["incident"], vehicle) if k not in done]
+    done = {e.evidence_type for e in state["evidence"] if e.is_accepted}
+    pending = [k for k in rules.required_photo_kinds(policy, vehicle) if k not in done]
     return pending[0] if pending else None
 
 
@@ -140,7 +171,7 @@ async def greet_user(state: ClaimState):
     await db.create_session(state["session_id"], user.id, "INTAKE", state["language"])
 
     update = await set_phase(state, "INTAKE")
-    await say(state, line(state, "greeting", name=user.name.split()[0]))
+    await say(state, line(state, "greeting", name=user.full_name.split()[0]))
     return update
 
 
@@ -154,16 +185,16 @@ async def collect_incident(state: ClaimState):
     result = await claude.extract_incident(incident, text, vehicles, state["language"])
 
     # merge the new facts into the incident and show each new field on screen
-    if incident.description_original is None:
-        incident.description_original = text
+    if incident.description_user_language is None:
+        incident.description_user_language = text
     updates = result.model_dump(
-        exclude={"clarifying_question", "reply_to_user", "estimate_unknown", "flags"},
+        exclude={"clarifying_question", "reply_to_user", "estimate_unknown", "risk_flags"},
         exclude_none=True,
     )
     if result.vehicle_id and result.vehicle_id not in {v.id for v in vehicles}:
         updates.pop("vehicle_id")
-    if result.flags:
-        updates["flags"] = sorted(set(incident.flags) | set(result.flags))
+    if result.risk_flags:
+        updates["risk_flags"] = sorted(set(incident.risk_flags) | set(result.risk_flags))
     for name, value in updates.items():
         if getattr(incident, name) != value:
             setattr(incident, name, value)
@@ -194,12 +225,12 @@ async def find_policy(state: ClaimState):
         {
             "type": "policy_matched",
             "policy_id": policy.id,
-            "insurer": policy.insurer,
-            "policy_no": policy.policy_no,
-            "cover_type": policy.cover_type,
-            "ncb_pct": policy.ncb_pct,
+            "insurer_name": policy.insurer_name,
+            "policy_number": policy.policy_number,
+            "coverage_type": policy.coverage_type,
+            "no_claim_bonus_pct": policy.no_claim_bonus_pct,
             "deductible_inr": policy.compulsory_deductible_inr + policy.voluntary_deductible_inr,
-            "addons": policy.addons,
+            "add_on_covers": policy.add_on_covers,
         }
     )
     return {"policy": policy}
@@ -218,7 +249,7 @@ async def check_viability(state: ClaimState):
 
     send({"type": "bot_thinking"})
     reply = await claude.explain_verdict(
-        verdict, policy, incident.estimated_damage_inr, state["language"]
+        verdict, policy, incident.estimated_repair_cost_inr, state["language"]
     )
     await say(state, reply)
     return update | {"viability": verdict}
@@ -239,11 +270,15 @@ async def handle_decision(state: ClaimState):
         return update
 
     if phase == "FORM_REVIEW" and decision == "file":
-        ref = await db.file_claim(state["session_id"])
+        try:
+            ref = await db.file_claim(state["session_id"])
+        except db.DocumentsNotVerified:
+            await say(state, line(state, "not_verified"))
+            return {}
         if ref is None:  # already filed from the dashboard
             return {}
         update = await set_phase(state, "FILED")
-        send({"type": "filed", "reference_no": ref})
+        send({"type": "filed", "claim_reference_number": ref})
         await say(state, line(state, "filed", ref=ref))
         return update
 
@@ -267,27 +302,45 @@ async def grade_photo(state: ClaimState, runtime: Runtime[Turn]):
     grade = await claude.grade_damage_photo(
         runtime.context.photo, msg["mime"], kind, state["language"]
     )
+    policy = state["policy"]
+    assert policy is not None
+    vehicle = load_wallet().vehicles[policy.vehicle_id]
+
+    # the plate / licence read off the photo must match the vehicle and the policy's records
+    details = grade.model_dump(mode="json", include=READ_FIELDS.get(kind, set()))
+    mismatches = rules.verify_details(kind, details, vehicle, policy, state["incident"])
     attempts = state["retakes"].get(kind, 0)
-    # Second attempt with decent confidence is accepted, so the demo can't get stuck.
-    accepted = grade.accepted or (attempts >= 1 and grade.confidence >= 0.6)
+    # A second attempt with decent confidence passes on photo quality, so the demo can't get
+    # stuck; a detail that doesn't match the records never passes.
+    accepted = not mismatches and (grade.accepted or (attempts >= 1 and grade.confidence >= 0.6))
+    retake = None
+    if not accepted:
+        retake = (
+            mismatch_line(state, mismatches, details)
+            if mismatches
+            else grade.retake_instruction or line(state, "upload_photo")
+        )
 
     evidence = Evidence(
         id=msg["photo_id"],
-        kind=kind,
+        evidence_type=kind,
         file_path="",
-        accepted=accepted,
-        issues=[] if accepted else list(grade.issues),
-        confidence=grade.confidence,
+        is_accepted=accepted,
+        quality_issues=[] if accepted else list(grade.issues),
+        ai_confidence_score=grade.confidence,
+        extracted_details=details,
+        detail_mismatches=mismatches,
     )
     await db.add_evidence(state["session_id"], evidence)
     send(
         {
             "type": "photo_graded",
             "photo_id": msg["photo_id"],
-            "kind": kind,
-            "accepted": accepted,
-            "issues": evidence.issues,
-            "retake_instruction": None if accepted else grade.retake_instruction,
+            "evidence_type": kind,
+            "is_accepted": accepted,
+            "quality_issues": evidence.quality_issues,
+            "detail_mismatches": mismatches,
+            "retake_instruction": retake,
         }
     )
     update = {
@@ -295,8 +348,8 @@ async def grade_photo(state: ClaimState, runtime: Runtime[Turn]):
         "retakes": state["retakes"] | {kind: attempts + 1},
     }
 
-    if not accepted:
-        await say(state, grade.retake_instruction or line(state, "upload_photo"))
+    if retake:
+        await say(state, retake)
         return update
 
     next_kind = next_photo_kind(state | update)
@@ -321,16 +374,16 @@ async def review_form(state: ClaimState):
     est = settlement.estimate(ctype, cashless, docs_complete=not missing)
 
     form = {
-        "policyholder": user.name,
-        "phone": user.phone,
-        "insurer": policy.insurer,
-        "policy_no": policy.policy_no,
-        "vehicle": f"{vehicle.make_model} ({vehicle.reg_no})",
+        "policyholder": user.full_name,
+        "phone_number": user.phone_number,
+        "insurer_name": policy.insurer_name,
+        "policy_number": policy.policy_number,
+        "vehicle": f"{vehicle.brand} {vehicle.model} ({vehicle.vehicle_number})",
         "claim_type": ctype,
         "incident_date": str(incident.incident_date),
-        "location": incident.location,
-        "description": incident.description_en,
-        "estimated_damage_inr": incident.estimated_damage_inr,
+        "incident_location": incident.incident_location,
+        "description": incident.description_english,
+        "estimated_repair_cost_inr": incident.estimated_repair_cost_inr,
         "expected_payout_inr": verdict.insurer_payout_inr if verdict else None,
         "garage": incident.garage_name,
         "route": est.route,

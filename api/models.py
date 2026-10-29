@@ -30,45 +30,50 @@ SessionState = Literal[
 
 
 class Document(BaseModel):
-    code: str
-    name_en: str
-    name_hi: str
+    document_code: str
+    name_english: str
+    name_hindi: str
 
 
 class User(BaseModel):
     id: str
-    name: str
-    language: Language
-    phone: str
+    full_name: str
+    preferred_language: Language
+    phone_number: str
 
 
 class Vehicle(BaseModel):
     id: str
     user_id: str
-    type: VehicleType
-    reg_no: str
-    make_model: str
-    year: int
+    vehicle_type: VehicleType
+    vehicle_number: str  # registration (number plate)
+    brand: str
+    model: str
+    manufacture_year: int
 
 
 class Policy(BaseModel):
     id: str
     user_id: str
     vehicle_id: str
-    insurer: str
-    policy_no: str
-    cover_type: CoverType
-    period_start: date
-    period_end: date
-    idv_inr: int
-    od_premium_inr: int
-    ncb_pct: NcbPct
+    insurer_name: str
+    policy_number: str
+    coverage_type: CoverType
+    coverage_start_date: date
+    coverage_end_date: date
+    insured_declared_value_inr: int
+    own_damage_premium_inr: int
+    no_claim_bonus_pct: NcbPct
     compulsory_deductible_inr: int
     voluntary_deductible_inr: int = 0
-    addons: list[Addon] = Field(default_factory=list)
-    exclusions: list[str] = Field(default_factory=list)
+    add_on_covers: list[Addon] = Field(default_factory=list)
+    excluded_conditions: list[str] = Field(default_factory=list)
     required_documents: list[str] = Field(default_factory=list)
-    cashless_garages: list[str] = Field(default_factory=list)
+    cashless_garage_names: list[str] = Field(default_factory=list)
+    # Driving licence submitted at policy issuance; the claim's DL upload must match it.
+    driving_licence_number: str
+    driving_licence_holder_name: str
+    driving_licence_valid_until: date
 
 
 class Incident(BaseModel):
@@ -77,18 +82,18 @@ class Incident(BaseModel):
     user_id: str | None = None
     vehicle_id: str | None = None
     incident_date: date | None = None
-    location: str | None = None
-    description_en: str | None = None
-    description_original: str | None = None
+    incident_location: str | None = None
+    description_english: str | None = None
+    description_user_language: str | None = None
     third_party_involved: bool = False
-    third_party_damage: bool = False
-    injuries: bool = False
-    estimated_damage_inr: int | None = None
+    third_party_property_damaged: bool = False
+    anyone_injured: bool = False
+    estimated_repair_cost_inr: int | None = None
     garage_estimate_uploaded: bool = False
     police_report_filed: bool | None = None
     garage_name: str | None = None
     # Exclusion / FIR triggers: drunk_driving, no_valid_dl, commercial_use, theft, hit_and_run
-    flags: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
 
 
 class Viability(BaseModel):
@@ -115,11 +120,13 @@ class Settlement(BaseModel):
 class Evidence(BaseModel):
     id: str
     claim_id: str | None = None
-    kind: EvidenceKind
+    evidence_type: EvidenceKind
     file_path: str
-    accepted: bool
-    issues: list[str] = Field(default_factory=list)
-    confidence: float = 0.0
+    is_accepted: bool
+    quality_issues: list[str] = Field(default_factory=list)
+    ai_confidence_score: float = 0.0
+    extracted_details: dict = Field(default_factory=dict)  # plate / DL fields read from the photo
+    detail_mismatches: list[str] = Field(default_factory=list)  # codes from rules.verify_details
 
 
 class Claim(BaseModel):
@@ -127,18 +134,18 @@ class Claim(BaseModel):
     incident_id: str
     policy_id: str
     claim_type: ClaimType
-    status: Literal["draft", "filed"] = "draft"
-    form: dict = Field(default_factory=dict)
+    claim_status: Literal["draft", "filed"] = "draft"
+    claim_form_data: dict = Field(default_factory=dict)
     missing_docs: list[str] = Field(default_factory=list)
-    settlement_days_min: int | None = None
-    settlement_days_max: int | None = None
-    reference_no: str | None = None
+    expected_settlement_days_min: int | None = None
+    expected_settlement_days_max: int | None = None
+    claim_reference_number: str | None = None
 
 
 class Session(BaseModel):
     id: str
     user_id: str
-    state: SessionState = "INTAKE"
-    language: Language
+    conversation_stage: SessionState = "INTAKE"
+    conversation_language: Language
     history: list[dict] = Field(default_factory=list)
-    created_at: datetime
+    started_at: datetime
