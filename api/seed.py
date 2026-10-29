@@ -25,6 +25,9 @@ class Wallet(BaseModel):
     def policies_for(self, user_id: str) -> list[Policy]:
         return [p for p in self.policies.values() if p.user_id == user_id]
 
+    def document_names(self, codes: list[str]) -> list[str]:
+        return [self.documents[c].name_english if c in self.documents else c for c in codes]
+
 
 @lru_cache(maxsize=1)
 def load_wallet(data_dir: Path = DATA_DIR) -> Wallet:

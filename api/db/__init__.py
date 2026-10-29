@@ -277,6 +277,20 @@ async def file_claim(session_id: str) -> str | None:
     return filed
 
 
+async def cancel_claim(session_id: str) -> None:
+    """Drop a claim before it is filed: the conversation is kept, marked CANCELLED, and its
+    unfiled draft is removed so it can't be filed from the dashboard."""
+    async with pool().acquire() as conn, conn.transaction():
+        await conn.execute(
+            "DELETE FROM claims WHERE session_id = $1 AND claim_status = 'draft'", session_id
+        )
+        await conn.execute(
+            """UPDATE sessions SET conversation_stage = 'CANCELLED', updated_at = now()
+               WHERE id = $1""",
+            session_id,
+        )
+
+
 async def user_policies(user_id: str) -> list[dict]:
     """Every policy the user holds, with its vehicle and the documents a claim on it needs."""
     rows = await pool().fetch(
@@ -306,42 +320,107 @@ async def user_policies(user_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _with_actions(row: asyncpg.Record) -> dict:
+    """A claim row plus what the user may do with it, by the rules."""
+    stage = row["conversation_stage"]
+    return dict(row) | {
+        "resumable": rules.is_resumable(stage),
+        "deletable": rules.is_cancellable(stage),
+    }
+
+
+# Every claim is listed from its first message, not only once a draft exists.
+_CLAIM_COLUMNS = """s.id AS session_id, s.conversation_stage, s.started_at,
+       (SELECT max(m.sent_at) FROM messages m WHERE m.session_id = s.id) AS last_activity_at,
+       (SELECT m.message_text FROM messages m WHERE m.session_id = s.id AND m.sender_role = 'user'
+        ORDER BY m.id LIMIT 1) AS first_user_message,
+       c.claim_status, c.claim_reference_number, c.claim_type, c.drafted_at, c.filed_at,
+       c.expected_settlement_days_min, c.expected_settlement_days_max,
+       v.brand, v.model, v.vehicle_number, p.insurer_name, p.policy_number,
+       i.incident_date, i.description_english,
+       i.estimated_repair_cost_inr, i.claim_recommendation, i.viability_assessment,
+       coalesce((c.claim_form_data ->> 'expected_payout_inr')::int,
+                (i.viability_assessment ->> 'insurer_payout_inr')::int) AS expected_payout_inr,
+       (SELECT count(*) FROM claim_documents cd
+        WHERE cd.session_id = s.id AND NOT cd.is_provided) AS documents_missing"""
+_CLAIM_JOINS = """FROM sessions s
+       LEFT JOIN incidents i ON i.session_id = s.id
+       LEFT JOIN vehicles v ON v.id = i.vehicle_id
+       LEFT JOIN policies p ON p.id = i.policy_id
+       LEFT JOIN claims c ON c.session_id = s.id"""
+
+
 async def user_claims(user_id: str) -> list[dict]:
-    """The user's claims, newest first, with enough to list them."""
+    """Every claim conversation the user has started, most recently active first: in progress,
+    closed or filed. Cancelled ones, and ones where the user never said anything, are left out."""
     rows = await pool().fetch(
-        """SELECT c.session_id, c.claim_status, c.claim_reference_number, c.claim_type,
-                  c.drafted_at, c.filed_at, c.expected_settlement_days_min,
-                  c.expected_settlement_days_max,
-                  p.insurer_name, p.policy_number, v.brand, v.model, v.vehicle_number,
-                  i.incident_date, i.estimated_repair_cost_inr, i.claim_recommendation,
-                  (c.claim_form_data ->> 'expected_payout_inr')::int AS expected_payout_inr,
-                  (SELECT count(*) FROM claim_documents cd
-                   WHERE cd.session_id = c.session_id AND NOT cd.is_provided)
-                      AS documents_missing
-           FROM claims c
-           JOIN sessions s ON s.id = c.session_id
-           JOIN policies p ON p.id = c.policy_id
-           JOIN vehicles v ON v.id = p.vehicle_id
-           LEFT JOIN incidents i ON i.session_id = c.session_id
-           WHERE s.user_id = $1
-           ORDER BY c.drafted_at DESC""",
+        f"""SELECT {_CLAIM_COLUMNS}
+            {_CLAIM_JOINS}
+            WHERE s.user_id = $1 AND s.conversation_stage <> 'CANCELLED'
+              AND EXISTS (SELECT 1 FROM messages m
+                          WHERE m.session_id = s.id AND m.sender_role = 'user')
+            ORDER BY last_activity_at DESC NULLS LAST""",
         user_id,
     )
-    return [dict(r) for r in rows]
+    return [_with_actions(r) for r in rows]
+
+
+async def delete_claim(session_id: str) -> None:
+    """Delete a claim conversation and everything in it (messages, incident, photos, draft)."""
+    await pool().execute("DELETE FROM sessions WHERE id = $1", session_id)
+
+
+async def load_session(user_id: str, session_id: str) -> dict | None:
+    """Everything saved for one conversation, for the agent to resume it (None if not theirs)."""
+    async with pool().acquire() as conn:
+        session = await conn.fetchrow(
+            """SELECT conversation_stage, conversation_language FROM sessions
+               WHERE id = $1 AND user_id = $2""",
+            session_id,
+            user_id,
+        )
+        if session is None:
+            return None
+        incident = await conn.fetchrow("SELECT * FROM incidents WHERE session_id = $1", session_id)
+        evidence = await conn.fetch(
+            """SELECT id, evidence_type, is_accepted, quality_issues, ai_confidence_score,
+                      extracted_details, detail_mismatches
+               FROM evidence WHERE session_id = $1 ORDER BY uploaded_at""",
+            session_id,
+        )
+        claim = await conn.fetchrow(
+            """SELECT claim_form_data, expected_settlement_days_min,
+                      expected_settlement_days_max, claim_reference_number
+               FROM claims WHERE session_id = $1""",
+            session_id,
+        )
+        missing = await conn.fetch(
+            """SELECT document_code FROM claim_documents
+               WHERE session_id = $1 AND NOT is_provided""",
+            session_id,
+        )
+        messages = await conn.fetch(
+            "SELECT sender_role, message_text FROM messages WHERE session_id = $1 ORDER BY id",
+            session_id,
+        )
+    return {
+        "stage": session["conversation_stage"],
+        "incident": dict(incident) if incident else None,
+        "evidence": [dict(r) for r in evidence],
+        "claim": dict(claim) if claim else None,
+        "missing_docs": [r["document_code"] for r in missing],
+        "messages": [dict(r) for r in messages],
+    }
 
 
 async def claim_detail(user_id: str, session_id: str) -> dict | None:
-    """One claim with its checklist, verdict, photos and conversation (None if not the user's)."""
+    """One claim with its checklist, verdict, photos and conversation (None if not the user's).
+    The draft fields (form, checklist, settlement) are null until the claim reaches review."""
     async with pool().acquire() as conn:
         claim = await conn.fetchrow(
-            """SELECT c.session_id, c.claim_status, c.claim_reference_number, c.claim_type,
-                      c.claim_form_data, c.expected_settlement_days_min,
-                      c.expected_settlement_days_max, c.drafted_at, c.filed_at,
-                      i.claim_recommendation, i.viability_assessment
-               FROM claims c
-               JOIN sessions s ON s.id = c.session_id
-               LEFT JOIN incidents i ON i.session_id = c.session_id
-               WHERE c.session_id = $1 AND s.user_id = $2""",
+            f"""SELECT {_CLAIM_COLUMNS}, c.claim_form_data
+                {_CLAIM_JOINS}
+                WHERE s.id = $1 AND s.user_id = $2""",
             session_id,
             user_id,
         )
@@ -366,7 +445,7 @@ async def claim_detail(user_id: str, session_id: str) -> dict | None:
             session_id,
         )
     return {
-        **dict(claim),
+        **_with_actions(claim),
         "documents": [dict(r) for r in documents],
         "evidence": [dict(r) for r in evidence],
         "messages": [dict(r) for r in messages],

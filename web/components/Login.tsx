@@ -3,11 +3,6 @@
 import { useState } from "react";
 import { lookupUser, type Profile } from "@/lib/api";
 
-// Synthetic wallet numbers (api/data/users.json), shown as one-tap shortcuts for the demo.
-const DEMO_NUMBERS = [
-  { mobile: "9000011111", label: "Ravi · Hindi" },
-  { mobile: "9000022222", label: "Priya · English" },
-];
 
 export default function Login({ onLogin }: { onLogin: (p: Profile) => void }) {
   const [mobile, setMobile] = useState("");
@@ -81,24 +76,6 @@ export default function Login({ onLogin }: { onLogin: (p: Profile) => void }) {
           {loading ? "Fetching your policies…" : "Continue"}
         </button>
 
-        <div className="mt-6 border-t border-line pt-4">
-          <p className="text-xs text-muted">Demo accounts</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {DEMO_NUMBERS.map((d) => (
-              <button
-                key={d.mobile}
-                type="button"
-                onClick={() => {
-                  setMobile(d.mobile);
-                  submit(d.mobile);
-                }}
-                className="rounded-full border border-line px-3 py-1.5 text-xs text-ink transition hover:border-sky hover:bg-sky-soft"
-              >
-                {d.mobile.replace(/(\d{5})(\d{5})/, "$1 $2")} · {d.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </form>
 
       <p className="mt-6 text-center text-xs text-muted">

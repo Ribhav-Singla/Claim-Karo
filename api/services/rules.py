@@ -56,13 +56,43 @@ def claim_type(incident: Incident, policy: Policy) -> ClaimType | None:
     return None
 
 
+def missing_incident_facts(incident: Incident, estimate_unknown: bool) -> list[str]:
+    """What the conversation still has to find out before the verdict can be worked out."""
+    known = {
+        "vehicle": incident.vehicle_id is not None,
+        "date": incident.incident_date is not None,
+        "what happened": bool(incident.description_english),
+        "damage estimate": incident.estimated_repair_cost_inr is not None or estimate_unknown,
+    }
+    return [fact for fact, ok in known.items() if not ok]
+
+
+def is_cancellable(stage: str) -> bool:
+    """A claim can be dropped (or deleted) at any step until it is filed; then it is with the
+    insurer."""
+    return stage != "FILED"
+
+
+def is_resumable(stage: str) -> bool:
+    """A claim can be picked up again while it still has a step left to do."""
+    return stage in ("INTAKE", "VIABILITY", "EVIDENCE", "FORM_REVIEW")
+
+
+def deductible(policy: Policy) -> int:
+    return policy.compulsory_deductible_inr + policy.voluntary_deductible_inr
+
+
+def is_active(policy: Policy, on: date) -> bool:
+    return policy.coverage_start_date <= on <= policy.coverage_end_date
+
+
 def match_policy(incident: Incident, policies: list[Policy]) -> Policy | None:
     if incident.vehicle_id is None or incident.incident_date is None:
         return None
     for policy in policies:
         if policy.vehicle_id != incident.vehicle_id:
             continue
-        if not policy.coverage_start_date <= incident.incident_date <= policy.coverage_end_date:
+        if not is_active(policy, incident.incident_date):
             continue
         if claim_type(incident, policy) is None:
             continue
@@ -124,14 +154,14 @@ def _breakeven_estimate(deductible: int, dep_pct: int, ncb_loss_total: int) -> i
 def viability(
     incident: Incident, policy: Policy, vehicle: Vehicle, as_of: date | None = None
 ) -> Viability:
-    deductible = policy.compulsory_deductible_inr + policy.voluntary_deductible_inr
+    policy_deductible = deductible(policy)
     ncb_protected = "ncb_protect" in policy.add_on_covers
     reasons: list[str] = []
 
     def result(verdict, payout=0, depreciation=0, y1=0, total=0, **extra) -> Viability:
         return Viability(
             insurer_payout_inr=payout,
-            deductible_inr=deductible,
+            deductible_inr=policy_deductible,
             depreciation_inr=depreciation,
             ncb_loss_year1_inr=y1,
             ncb_loss_total_inr=total,
@@ -168,7 +198,7 @@ def viability(
     as_of = as_of or incident.incident_date or date.today()
     zero_dep = "zero_dep" in policy.add_on_covers
     dep_pct = 0 if zero_dep else depreciation_pct(vehicle_age_months(vehicle, as_of))
-    breakeven = _breakeven_estimate(deductible, dep_pct, total)
+    breakeven = _breakeven_estimate(policy_deductible, dep_pct, total)
 
     if incident.estimated_repair_cost_inr is None:
         reasons.append("ESTIMATE_PENDING")
@@ -189,7 +219,7 @@ def viability(
         reasons.append("ZERO_DEP_APPLIED")
     elif depreciation:
         reasons.append("DEPRECIATION_APPLIED")
-    payout = max(0, assessed - depreciation - deductible)
+    payout = max(0, assessed - depreciation - policy_deductible)
 
     if payout == 0:
         reasons.append("PAYOUT_BELOW_DEDUCTIBLE")
@@ -212,6 +242,49 @@ def viability(
         total=total,
         breakeven_estimate_inr=breakeven,
     )
+
+
+def what_if(
+    incident: Incident,
+    estimated_repair_cost_inr: int,
+    policies: list[Policy],
+    vehicles: dict[str, Vehicle],
+    today: date,
+) -> Viability | None:
+    """The verdict for a different repair cost, leaving the real incident unchanged.
+    None if no policy covers it. An incident with no date yet is priced as of today."""
+    hypothetical = incident.model_copy(
+        update={
+            "estimated_repair_cost_inr": estimated_repair_cost_inr,
+            "incident_date": incident.incident_date or today,
+        }
+    )
+    policy = match_policy(hypothetical, policies)
+    if policy is None:
+        return None
+    return viability(hypothetical, policy, vehicles[policy.vehicle_id])
+
+
+def policy_summary(
+    policy: Policy, vehicle: Vehicle, document_names: list[str], today: date
+) -> dict:
+    """What the user can be told about one of their policies."""
+    return {
+        "policy_id": policy.id,
+        "insurer": policy.insurer_name,
+        "policy_number": policy.policy_number,
+        "vehicle": f"{vehicle.brand} {vehicle.model} ({vehicle.vehicle_number})",
+        "cover": policy.coverage_type,
+        "valid": f"{policy.coverage_start_date} to {policy.coverage_end_date}",
+        "active_today": is_active(policy, today),
+        "insured_declared_value_inr": policy.insured_declared_value_inr,
+        "no_claim_bonus_pct": policy.no_claim_bonus_pct,
+        "deductible_inr": deductible(policy),
+        "add_on_covers": policy.add_on_covers,
+        "not_covered_if": policy.excluded_conditions,
+        "documents_for_a_claim": document_names,
+        "cashless_garages": policy.cashless_garage_names,
+    }
 
 
 def required_documents(incident: Incident, policy: Policy) -> list[str]:

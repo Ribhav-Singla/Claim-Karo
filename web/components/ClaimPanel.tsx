@@ -145,43 +145,6 @@ export default function ClaimPanel({
         </section>
       )}
 
-      {!policy && (
-        <Card title="Your vehicles">
-          <ul className="space-y-2">
-            {profile.vehicles.map((v) => (
-              <li key={v.id} className="rounded-xl border border-line p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-medium text-ink">
-                      {v.brand} {v.model}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {v.vehicle_number} · {v.vehicle_type === "2W" ? "Two-wheeler" : "Car"} · {v.manufacture_year}
-                    </p>
-                  </div>
-                  {v.policy && (
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        v.policy.coverage_type === "comprehensive" ? "bg-sky-soft text-navy" : "bg-canvas text-muted"
-                      }`}
-                    >
-                      {v.policy.coverage_type === "comprehensive" ? "Comprehensive" : "Third-party"}
-                    </span>
-                  )}
-                </div>
-                {v.policy ? (
-                  <p className="mt-2 text-xs text-muted">
-                    {v.policy.insurer_name} · NCB {v.policy.no_claim_bonus_pct}% · till{" "}
-                    {formatDate(v.policy.coverage_end_date)}
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-red-600">No active policy</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
 
       <Card title="Incident">
         {fieldRows.length === 0 ? (

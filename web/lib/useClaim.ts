@@ -42,6 +42,7 @@ export type Settlement = { min_days: number; max_days: number; route: string };
 
 // What the agent publishes on "claim.state" (agent/claim_agent.py, Claim.publish).
 type Snapshot = {
+  sessionId: string | null; // a new id when the user cancels and starts a new claim
   state: string;
   fields: Record<string, unknown>;
   policy: Policy | null;
@@ -62,6 +63,7 @@ export type ClaimState = Omit<Snapshot, "photos"> & {
 };
 
 const EMPTY: Snapshot = {
+  sessionId: null,
   state: "INTAKE",
   fields: {},
   policy: null,
@@ -82,28 +84,31 @@ const DECISION_TEXT: Record<"claim" | "dont_claim" | "file", Record<Language, st
 
 const MIC_OPTIONS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true, voiceIsolation: true };
 
-export function useClaim(language: Language) {
+// history: the earlier messages of a resumed claim, shown above the live conversation.
+export function useClaim(language: Language, history: Message[] = []) {
   const session = useSessionContext();
   const agent = useAgent(session);
   const chat = useSessionMessages(session);
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant();
   const { textStreams } = useTextStream("claim.state");
-  const [previews, setPreviews] = useState<Record<string, string>>({});
+  // photo id -> preview, and the claim (session id) it was uploaded to
+  const [previews, setPreviews] = useState<Record<string, { preview: string; sessionId: string | null }>>({});
 
   const snapshot: Snapshot = useMemo(() => {
     const latest = textStreams[textStreams.length - 1];
     return latest ? JSON.parse(latest.text) : EMPTY;
   }, [textStreams]);
 
-  const messages: Message[] = chat.messages
+  const live: Message[] = chat.messages
     .map((m): Message => {
       const fromUser = m.type === "userTranscript" || (m.type === "chatMessage" && !!m.from?.isLocal);
       return { id: m.id, role: fromUser ? "user" : "bot", text: m.message };
     })
     .filter((m) => m.text.trim());
+  const messages = history.length ? [...history, ...live] : live;
 
   const status: Status = !session.isConnected
-    ? messages.length > 0
+    ? live.length > 0
       ? "closed"
       : "connecting"
     : !agent.isConnected
@@ -116,11 +121,14 @@ export function useClaim(language: Language) {
     ...snapshot,
     status,
     messages,
-    photos: Object.entries(previews).map(([id, preview]) => ({
-      id,
-      preview,
-      ...(snapshot.photos[id] ?? { status: "grading" as const }),
-    })),
+    // only this claim's photos: a cancelled claim's thumbnails disappear with it
+    photos: Object.entries(previews)
+      .filter(([, p]) => p.sessionId === snapshot.sessionId)
+      .map(([id, { preview }]) => ({
+        id,
+        preview,
+        ...(snapshot.photos[id] ?? { status: "grading" as const }),
+      })),
     speaking: agent.state === "speaking",
     micOn: isMicrophoneEnabled,
   };
@@ -131,14 +139,14 @@ export function useClaim(language: Language) {
     async (file: File) => {
       const id = crypto.randomUUID();
       const { blob, preview } = await shrinkImage(file);
-      setPreviews((p) => ({ ...p, [id]: preview }));
+      setPreviews((p) => ({ ...p, [id]: { preview, sessionId: snapshot.sessionId } }));
       // the agent keys the photo's result by the file name (without extension)
       await localParticipant.sendFile(new File([blob], `${id}.jpg`, { type: "image/jpeg" }), {
         topic: "photo",
         mimeType: "image/jpeg",
       });
     },
-    [localParticipant],
+    [localParticipant, snapshot.sessionId],
   );
 
   const decide = useCallback(

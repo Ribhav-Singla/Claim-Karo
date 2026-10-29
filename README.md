@@ -310,8 +310,9 @@ Photo checklist for `grade_damage_photo` (surveyor requirements):
 
 - **STT**: streaming `saaras:v4` (`SARVAM_STT_MODEL`) with `language="unknown"`, so Hindi
   and English are auto-detected; the detected language steers the reply language.
-- **TTS**: streaming `SARVAM_TTS_MODEL` (e.g. `bulbul:v4-flash`) with `SARVAM_TTS_SPEAKER`
-  (e.g. `shubh_enhi_companion`); `target_language_code` follows the user (`hi-IN`/`en-IN`).
+- **TTS**: streaming `SARVAM_TTS_MODEL` (default `bulbul:v3`) with `SARVAM_TTS_SPEAKER`
+  (default `shubh`, the male voice; plain `shubh` exists only on `bulbul:v3`);
+  `target_language_code` follows the user (`hi-IN`/`en-IN`).
 
 ---
 
@@ -321,13 +322,20 @@ Photo checklist for `grade_damage_photo` (surveyor requirements):
 GET /users/lookup?phone=9000011111       login stand-in: wallet user + vehicles + policies
                                          (matches the last 10 digits; 404 if unknown)
 GET  /users/{user_id}/dashboard          policies (with vehicle + required documents) and
-                                         claims (newest first) for the dashboard
-GET  /users/{user_id}/claims/{session_id}       one claim: form, document checklist,
-                                                verdict, photos, conversation
+                                         every claim conversation from its first message
+                                         (most recently active first), each with its stage,
+                                         resumable and deletable
+GET  /users/{user_id}/claims/{session_id}       one claim: stage, verdict, photos, conversation;
+                                                form + document checklist once it reached review
 POST /users/{user_id}/claims/{session_id}/file  file a draft; {claim_reference_number}
-                                                (409 if filed or documents don't match)
-POST /livekit/token?user_id=u_ravi&language=hi  {server_url, participant_token}: a new room
-                                                with the claim-karo agent dispatched into it
+                                                (409 if not at review yet, filed, or documents
+                                                don't match)
+DELETE /users/{user_id}/claims/{session_id}     delete a claim and its whole conversation
+                                                (409 once filed)
+POST /livekit/token?user_id=u_ravi&language=hi[&session_id=…]
+                                                {server_url, participant_token}: a new room with
+                                                the claim-karo agent in it; with session_id the
+                                                agent resumes that claim (state + chat history)
 ```
 
 LiveKit room topics (one room = one conversation):
@@ -337,7 +345,7 @@ lk.chat          browser → agent   typed text (and the claim / don't-claim / f
 lk.transcription agent → browser   what the user said and what the agent says
 photo            browser → agent   byte stream; file name "<photo id>.jpg"
 claim.state      agent → browser   JSON snapshot after every change:
-                 {state, fields, policy, viability, photos: {<id>: {status, evidence_type,
+                 {sessionId, state, fields, policy, viability, photos: {<id>: {status, evidence_type,
                   quality_issues}}, form, missingDocs, settlement, referenceNo}
 ```
 
@@ -350,13 +358,15 @@ and the claim conversation; two columns on desktop, stacked on mobile.
 
 Paytm-inspired theme (navy `#002E6E`, cyan `#00BAF2`), tokens in `app/globals.css`.
 
-- `components/Login.tsx` — mobile-number entry (+91), calls `/users/lookup`; demo numbers
-  9000011111 (Ravi, Hindi) and 9000022222 (Priya, English) as one-tap chips.
-- `app/page.tsx` — header (language toggle, my claims, new claim, user, log out), then the
-  dashboard (after login) or the conversation (on New claim).
-- `components/Dashboard.tsx` — claims list (draft / filed), selected claim's details
-  (document checklist, verdict, form, photos, conversation; File claim on drafts), and
-  the user's policies with the documents a claim on each needs.
+- `components/Login.tsx` — mobile-number entry (+91), calls `/users/lookup`. Test numbers:
+  9000011111 (Ravi, Hindi) and 9000022222 (Priya, English).
+- `app/page.tsx` — header (My claims tab, language toggle, New claim, profile menu with log
+  out on the avatar), then the dashboard (after login) or the conversation (new or resumed;
+  a resumed claim shows its earlier messages above the live ones).
+- `components/Dashboard.tsx` — claims grouped In progress / Filed / Closed, each with
+  Continue (resume in chat) and Delete (until filed); the selected claim's details (verdict,
+  document checklist, form, photos, conversation; File claim once at review), and the
+  user's policies with the documents a claim on each needs.
 - `components/Chat.tsx` — messages, tap-to-talk mic, text input, photo upload in
   `EVIDENCE` (resized to 1600px JPEG), claim / don't-claim buttons; the mic button turns hands-free talking on and off.
 - `components/ClaimPanel.tsx` — progress stepper, verdict card, the user's vehicles and

@@ -2,25 +2,32 @@
 
 import { RoomAudioRenderer, SessionProvider, useSession } from "@livekit/components-react";
 import { TokenSource } from "livekit-client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Chat from "@/components/Chat";
 import ClaimPanel from "@/components/ClaimPanel";
 import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
-import { fetchLiveKitToken, type Profile } from "@/lib/api";
-import { useClaim, type Language } from "@/lib/useClaim";
+import { fetchClaim, fetchLiveKitToken, type Profile } from "@/lib/api";
+import { useClaim, type Language, type Message } from "@/lib/useClaim";
+
+type SessionProps = {
+  profile: Profile;
+  language: Language;
+  resumeId: string | null; // continue this claim instead of starting a new one
+  onSessionId: (id: string) => void;
+};
 
 // One claim conversation = one LiveKit room with the claim agent in it.
-function Session({ profile, language }: { profile: Profile; language: Language }) {
+function Session({ profile, language, resumeId, onSessionId }: SessionProps) {
   const tokenSource = useMemo(
-    () => TokenSource.custom(() => fetchLiveKitToken(profile.id, language)),
-    [profile.id, language],
+    () => TokenSource.custom(() => fetchLiveKitToken(profile.id, language, resumeId)),
+    [profile.id, language, resumeId],
   );
   const session = useSession(tokenSource);
   const { start, end } = session;
 
   useEffect(() => {
-    // the mic stays off until the user taps it or starts a call
+    // the mic stays off until the user taps it
     start({ tracks: { microphone: { enabled: false } } }).catch(() => {});
     return () => {
       end();
@@ -30,13 +37,35 @@ function Session({ profile, language }: { profile: Profile; language: Language }
   return (
     <SessionProvider session={session}>
       <RoomAudioRenderer />
-      <Conversation profile={profile} language={language} />
+      <Conversation profile={profile} language={language} resumeId={resumeId} onSessionId={onSessionId} />
     </SessionProvider>
   );
 }
 
-function Conversation({ profile, language }: { profile: Profile; language: Language }) {
-  const { state, sendText, sendPhoto, decide, setMic } = useClaim(language);
+function Conversation({ profile, language, resumeId, onSessionId }: SessionProps) {
+  // a resumed claim shows what was said before, above the live conversation
+  const [history, setHistory] = useState<Message[]>([]);
+  useEffect(() => {
+    if (!resumeId) return;
+    let live = true;
+    fetchClaim(profile.id, resumeId)
+      .then((c) => {
+        if (!live) return;
+        setHistory(
+          c.messages.map((m, i) => ({ id: `history-${i}`, role: m.sender_role, text: m.message_text })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [profile.id, resumeId]);
+
+  const { state, sendText, sendPhoto, decide, setMic } = useClaim(language, history);
+  useEffect(() => {
+    if (state.sessionId) onSessionId(state.sessionId);
+  }, [state.sessionId, onSessionId]);
+
   return (
     <div className="grid gap-4 py-4 md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px]">
       <Chat state={state} onText={sendText} onPhoto={sendPhoto} onDecide={decide} setMic={setMic} />
@@ -50,91 +79,175 @@ const maskPhone = (phone: string) => {
   return `+91 ••••• ${digits.slice(-5)}`;
 };
 
+const initials = (name: string) =>
+  name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+// Name and phone behind the avatar, with log out; opens on hover, or on tap / keyboard focus.
+function ProfileMenu({ profile, onLogout }: { profile: Profile; onLogout: () => void }) {
+  return (
+    <div className="group relative">
+      <button
+        className="flex items-center gap-2 rounded-full p-0.5 pr-2 transition hover:bg-canvas focus:bg-canvas focus:outline-none"
+        aria-haspopup="menu"
+        aria-label={`Account: ${profile.full_name}`}
+      >
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-navy text-xs font-semibold text-white">
+          {initials(profile.full_name)}
+        </span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-muted transition group-hover:rotate-180 group-focus-within:rotate-180">
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {/* pt-2 bridges the gap so the menu stays open while the pointer moves onto it */}
+      <div className="invisible absolute right-0 top-full z-20 pt-2 opacity-0 transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+        <div role="menu" className="w-60 overflow-hidden rounded-2xl border border-line bg-white shadow-lg">
+          <div className="flex items-center gap-3 px-4 py-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-sky-soft text-sm font-semibold text-navy">
+              {initials(profile.full_name)}
+            </span>
+            <div className="min-w-0 leading-tight">
+              <p className="truncate text-sm font-semibold text-ink">{profile.full_name}</p>
+              <p className="text-xs text-muted">{maskPhone(profile.phone_number)}</p>
+            </div>
+          </div>
+          <div className="border-t border-line p-1.5">
+            <button
+              role="menuitem"
+              onClick={onLogout}
+              className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-sm text-ink transition hover:bg-red-50 hover:text-red-700"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+              </svg>
+              Log out
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type OpenChat = { run: number; resumeId: string | null };
+
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [language, setLanguage] = useState<Language>("hi");
-  const [run, setRun] = useState(0); // bump to start a fresh conversation
-  const [view, setView] = useState<"dashboard" | "chat">("dashboard");
+  const [chat, setChat] = useState<OpenChat | null>(null); // null: the dashboard is showing
+  const currentSession = useRef<string | null>(null); // the claim the open chat is on
 
   function login(p: Profile) {
     setProfile(p);
     setLanguage(p.preferred_language);
-    setView("dashboard");
+    setChat(null);
   }
 
-  function newClaim() {
-    setRun((r) => r + 1);
-    setView("chat");
+  function openChat(resumeId: string | null) {
+    currentSession.current = resumeId;
+    setChat((c) => ({ run: (c?.run ?? 0) + 1, resumeId }));
   }
+
+  function switchLanguage(l: Language) {
+    setLanguage(l);
+    // reconnecting in the new language carries on with the same claim
+    if (chat) setChat({ run: chat.run + 1, resumeId: currentSession.current });
+  }
+
+  const onSessionId = useCallback((id: string) => {
+    currentSession.current = id;
+  }, []);
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-10 bg-white/90 shadow-[0_1px_0_var(--color-line)] backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-          <div className="flex items-center gap-2">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-navy text-sm font-bold text-white">
-              CK
-            </div>
+      <header className="sticky top-0 z-10 border-b border-line bg-white/90 backdrop-blur">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+          <button onClick={() => profile && setChat(null)} className="flex items-center gap-2" aria-label="Claim Karo home">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-navy text-sm font-bold text-white">CK</div>
             <span className="text-lg font-semibold tracking-tight text-navy">
               Claim<span className="text-sky">Karo</span>
             </span>
-          </div>
+          </button>
 
           {profile && (
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="flex rounded-full bg-canvas p-0.5 text-xs font-medium" role="group" aria-label="Language">
-                {(["hi", "en"] as const).map((l) => (
+            <>
+              <nav className="ml-2 hidden items-center gap-1 sm:flex" aria-label="Main">
+                {[
+                  { label: "My claims", active: !chat, onClick: () => setChat(null) },
+                  ...(chat ? [{ label: chat.resumeId ? "Continuing claim" : "New claim", active: true, onClick: () => {} }] : []),
+                ].map((item) => (
                   <button
-                    key={l}
-                    onClick={() => setLanguage(l)}
-                    className={`rounded-full px-3 py-1 transition ${
-                      language === l ? "bg-white text-navy shadow-sm" : "text-muted hover:text-ink"
+                    key={item.label}
+                    onClick={item.onClick}
+                    aria-current={item.active ? "page" : undefined}
+                    className={`relative rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      item.active ? "text-navy" : "text-muted hover:bg-canvas hover:text-ink"
                     }`}
                   >
-                    {l === "hi" ? "हिंदी" : "English"}
+                    {item.label}
+                    {item.active && <span className="absolute inset-x-3 -bottom-[13px] h-0.5 rounded-full bg-sky" />}
                   </button>
                 ))}
-              </div>
-              {view === "chat" && (
-                <button
-                  onClick={() => setView("dashboard")}
-                  className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-sky"
-                >
-                  My claims
-                </button>
-              )}
-              <button
-                onClick={newClaim}
-                className="hidden rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-sky sm:block"
-              >
-                New claim
-              </button>
-              <div className="flex items-center gap-2 border-l border-line pl-3">
-                <div className="grid h-8 w-8 place-items-center rounded-full bg-sky-soft text-xs font-semibold text-navy">
-                  {profile.full_name.split(" ").map((w) => w[0]).join("")}
+              </nav>
+
+              <div className="ml-auto flex items-center gap-2 sm:gap-3">
+                {chat && (
+                  <button
+                    onClick={() => setChat(null)}
+                    className="rounded-full border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-sky sm:hidden"
+                  >
+                    My claims
+                  </button>
+                )}
+                <div className="flex rounded-full bg-canvas p-0.5 text-xs font-medium" role="group" aria-label="Language">
+                  {(["hi", "en"] as const).map((l) => (
+                    <button
+                      key={l}
+                      onClick={() => switchLanguage(l)}
+                      aria-pressed={language === l}
+                      className={`rounded-full px-3 py-1 transition ${
+                        language === l ? "bg-white text-navy shadow-sm" : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      {l === "hi" ? "हिंदी" : "EN"}
+                    </button>
+                  ))}
                 </div>
-                <div className="hidden leading-tight sm:block">
-                  <p className="text-sm font-medium text-ink">{profile.full_name}</p>
-                  <p className="text-xs text-muted">{maskPhone(profile.phone_number)}</p>
-                </div>
-                <button
-                  onClick={() => setProfile(null)}
-                  className="ml-1 text-xs text-muted transition hover:text-navy"
-                  title="Log out"
-                >
-                  Log out
-                </button>
+                {!chat && (
+                  <button
+                    onClick={() => openChat(null)}
+                    className="hidden items-center gap-1.5 rounded-full bg-sky px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-sky-dark sm:flex"
+                  >
+                    <span className="text-base leading-none">+</span> New claim
+                  </button>
+                )}
+                <ProfileMenu profile={profile} onLogout={() => setProfile(null)} />
               </div>
-            </div>
+            </>
           )}
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-4">
-        {profile && view === "chat" ? (
-          <Session key={`${profile.id}-${language}-${run}`} profile={profile} language={language} />
+        {profile && chat ? (
+          <Session
+            key={`${profile.id}-${chat.run}`}
+            profile={profile}
+            language={language}
+            resumeId={chat.resumeId}
+            onSessionId={onSessionId}
+          />
         ) : profile ? (
-          <Dashboard profile={profile} language={language} onNewClaim={newClaim} />
+          <Dashboard
+            profile={profile}
+            language={language}
+            onNewClaim={() => openChat(null)}
+            onResume={(id) => openChat(id)}
+          />
         ) : (
           <Login onLogin={login} />
         )}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  deleteClaim,
   fetchClaim,
   fetchDashboard,
   fileClaim,
@@ -10,14 +11,22 @@ import {
   type DashboardData,
   type DocumentName,
   type Profile,
+  type Stage,
   type WalletPolicy,
 } from "@/lib/api";
 import { formatDate, label, VERDICT } from "@/lib/format";
 import { rupees, type Language } from "@/lib/useClaim";
 
-const STATUS = {
-  draft: { label: "Draft", tone: "bg-amber-50 text-amber-800 ring-amber-200" },
-  filed: { label: "Filed", tone: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+// Where each claim stands, by its conversation stage.
+const STAGE: Record<Stage, { label: string; tone: string }> = {
+  INTAKE: { label: "Details pending", tone: "bg-amber-50 text-amber-800 ring-amber-200" },
+  VIABILITY: { label: "Decision pending", tone: "bg-sky-soft text-navy ring-sky/30" },
+  EVIDENCE: { label: "Photos pending", tone: "bg-sky-soft text-navy ring-sky/30" },
+  FORM_REVIEW: { label: "Ready to file", tone: "bg-violet-50 text-violet-800 ring-violet-200" },
+  FILED: { label: "Filed", tone: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  NO_COVER: { label: "Not covered", tone: "bg-canvas text-muted ring-line" },
+  ADVISED_NO_CLAIM: { label: "Not claimed", tone: "bg-canvas text-muted ring-line" },
+  CANCELLED: { label: "Cancelled", tone: "bg-canvas text-muted ring-line" },
 };
 
 const PHOTO_LABEL: Record<string, string> = {
@@ -30,10 +39,25 @@ const PHOTO_LABEL: Record<string, string> = {
 
 const docName = (d: DocumentName, language: Language) => (language === "hi" ? d.name_hindi : d.name_english);
 
-function StatusPill({ status }: { status: ClaimSummary["claim_status"] }) {
+const vehicleOf = (c: ClaimSummary) => (c.brand ? `${c.brand} ${c.model}` : "Vehicle not given yet");
+
+// What the claim is about: the English summary, or else the user's own first words.
+const titleOf = (c: ClaimSummary) => c.description_english ?? c.first_user_message ?? "Claim conversation";
+
+function timeAgo(iso: string | null) {
+  if (!iso) return "";
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  return formatDate(iso);
+}
+
+function StagePill({ stage }: { stage: Stage }) {
   return (
-    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${STATUS[status].tone}`}>
-      {STATUS[status].label}
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${STAGE[stage].tone}`}>
+      {STAGE[stage].label}
     </span>
   );
 }
@@ -63,46 +87,124 @@ function Rows({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
+const TrashIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6" />
+  </svg>
+);
+
+// Delete asks once more before it removes the claim and its whole conversation.
+function DeleteButton({ onDelete, compact }: { onDelete: () => Promise<void>; compact?: boolean }) {
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!confirming) {
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirming(true);
+        }}
+        title="Delete this claim"
+        aria-label="Delete this claim"
+        className={`flex items-center gap-1.5 rounded-xl text-sm font-medium text-muted transition hover:bg-red-50 hover:text-red-700 ${
+          compact ? "p-2" : "border border-line px-3 py-2.5"
+        }`}
+      >
+        <TrashIcon />
+        {!compact && "Delete"}
+      </button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <span className="text-xs text-red-700">Delete for good?</span>
+      <button
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true);
+          try {
+            await onDelete();
+          } finally {
+            setBusy(false);
+            setConfirming(false);
+          }
+        }}
+        className="rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+      >
+        {busy ? "Deleting…" : "Delete"}
+      </button>
+      <button onClick={() => setConfirming(false)} className="rounded-lg px-2 py-1.5 text-xs font-medium text-muted hover:text-ink">
+        Keep
+      </button>
+    </div>
+  );
+}
+
 // --- claims list -------------------------------------------------------------------------
 
-function ClaimRow({ claim, active, onSelect }: { claim: ClaimSummary; active: boolean; onSelect: () => void }) {
+function ClaimRow({
+  claim,
+  active,
+  onSelect,
+  onResume,
+  onDelete,
+}: {
+  claim: ClaimSummary;
+  active: boolean;
+  onSelect: () => void;
+  onResume: () => void;
+  onDelete: () => Promise<void>;
+}) {
+  const payout = claim.viability_assessment?.estimate_pending ? null : claim.expected_payout_inr;
   return (
-    <button
+    <article
       onClick={onSelect}
       aria-current={active}
-      className={`w-full rounded-2xl border bg-white p-4 text-left shadow-sm transition ${
+      className={`cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition ${
         active ? "border-sky ring-4 ring-sky-soft" : "border-line hover:border-sky"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-ink">
-            {claim.brand} {claim.model}
-          </p>
-          <p className="text-xs text-muted">
-            {claim.vehicle_number} · {claim.incident_date ? `Incident ${formatDate(claim.incident_date)}` : "Date not given"}
-          </p>
+          <p className="truncate text-sm font-semibold text-ink">{vehicleOf(claim)}</p>
+          <p className="truncate text-xs text-muted">{titleOf(claim)}</p>
         </div>
-        <StatusPill status={claim.claim_status} />
+        <StagePill stage={claim.conversation_stage} />
       </div>
+
       <div className="mt-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <p className="text-[11px] text-muted">Expected payout</p>
-          <p className="text-base font-semibold text-navy tabular-nums">{rupees(claim.expected_payout_inr)}</p>
-        </div>
-        <p className="text-xs text-muted">
-          {claim.claim_status === "filed" ? (
-            <span className="font-mono text-ink">{claim.claim_reference_number}</span>
-          ) : claim.documents_missing > 0 ? (
-            <span className="text-amber-700">
-              {claim.documents_missing} document{claim.documents_missing > 1 ? "s" : ""} needed
-            </span>
+          {claim.conversation_stage === "FILED" ? (
+            <>
+              <p className="text-[11px] text-muted">Reference</p>
+              <p className="font-mono text-sm font-semibold text-ink">{claim.claim_reference_number}</p>
+            </>
           ) : (
-            "Ready to file"
+            <>
+              <p className="text-[11px] text-muted">{payout !== null ? "Expected payout" : "Last activity"}</p>
+              <p className="text-sm font-semibold text-navy tabular-nums">
+                {payout !== null ? rupees(payout) : timeAgo(claim.last_activity_at ?? claim.started_at)}
+              </p>
+            </>
           )}
-        </p>
+        </div>
+        <div className="flex items-center gap-1">
+          {claim.deletable && <DeleteButton compact onDelete={onDelete} />}
+          {claim.resumable && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onResume();
+              }}
+              className="rounded-xl bg-sky px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-sky-dark"
+            >
+              Continue →
+            </button>
+          )}
+        </div>
       </div>
-    </button>
+    </article>
   );
 }
 
@@ -113,13 +215,17 @@ function ClaimDetailPanel({
   sessionId,
   language,
   onBack,
-  onFiled,
+  onChanged,
+  onResume,
+  onDelete,
 }: {
   userId: string;
   sessionId: string;
   language: Language;
   onBack: () => void;
-  onFiled: () => void;
+  onChanged: () => void;
+  onResume: () => void;
+  onDelete: () => Promise<void>;
 }) {
   const [claim, setClaim] = useState<ClaimDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +249,7 @@ function ClaimDetailPanel({
     try {
       await fileClaim(userId, sessionId);
       setClaim(await fetchClaim(userId, sessionId));
-      onFiled();
+      onChanged();
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -161,7 +267,7 @@ function ClaimDetailPanel({
 
   const verdict = claim.claim_recommendation ? VERDICT[claim.claim_recommendation] : null;
   const missing = claim.documents.filter((d) => !d.is_provided);
-  const formRows = Object.entries(claim.claim_form_data)
+  const formRows = Object.entries(claim.claim_form_data ?? {})
     .filter(([k, v]) => v !== null && v !== undefined && !["policyholder", "phone_number"].includes(k))
     .map(([k, v]) => [
       label(k).replace(/ inr$/i, ""),
@@ -177,14 +283,15 @@ function ClaimDetailPanel({
       <header className="rounded-2xl border border-line bg-white p-4 shadow-sm">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-muted">{label(claim.claim_type)} claim</p>
-            <h2 className="mt-0.5 text-lg font-semibold text-ink">{String(claim.claim_form_data.vehicle ?? "")}</h2>
             <p className="text-xs text-muted">
-              {String(claim.claim_form_data.insurer_name ?? "")} ·{" "}
-              {String(claim.claim_form_data.policy_number ?? "")}
+              {claim.claim_type ? `${label(claim.claim_type)} claim` : `Started ${formatDate(claim.started_at)}`}
+            </p>
+            <h2 className="mt-0.5 text-lg font-semibold text-ink">{vehicleOf(claim)}</h2>
+            <p className="text-xs text-muted">
+              {claim.insurer_name ? `${claim.insurer_name} · ${claim.policy_number}` : titleOf(claim)}
             </p>
           </div>
-          <StatusPill status={claim.claim_status} />
+          <StagePill stage={claim.conversation_stage} />
         </div>
 
         {claim.claim_status === "filed" ? (
@@ -194,21 +301,37 @@ function ClaimDetailPanel({
             <p className="mt-1 text-xs opacity-70">Filed {claim.filed_at && formatDate(claim.filed_at)}</p>
           </div>
         ) : (
-          <div className="mt-4 rounded-xl bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">Not filed yet</p>
-            <p className="mt-0.5 text-xs text-amber-900/80">
-              Started {formatDate(claim.drafted_at)}.{" "}
-              {missing.length > 0
-                ? "You can file now and send the missing documents to the insurer afterwards."
-                : "Everything the insurer needs is in place."}
+          <div className="mt-4 space-y-3 rounded-xl bg-canvas p-4">
+            <p className="text-xs text-muted">
+              {claim.claim_status === "draft"
+                ? missing.length > 0
+                  ? "Ready to file. You can send the missing documents to the insurer afterwards."
+                  : "Ready to file. Everything the insurer needs is in place."
+                : claim.resumable
+                  ? "Not finished yet. Continue where you left off, or delete it if you don't need it."
+                  : "This conversation is closed."}
             </p>
-            <button
-              onClick={file}
-              disabled={filing}
-              className="mt-3 w-full rounded-xl bg-sky py-2.5 text-sm font-semibold text-white transition hover:bg-sky-dark disabled:opacity-40"
-            >
-              {filing ? "Filing…" : "File claim"}
-            </button>
+            <div className="flex gap-2">
+              {claim.claim_status === "draft" ? (
+                <button
+                  onClick={file}
+                  disabled={filing}
+                  className="flex-1 rounded-xl bg-sky py-2.5 text-sm font-semibold text-white transition hover:bg-sky-dark disabled:opacity-40"
+                >
+                  {filing ? "Filing…" : "File claim"}
+                </button>
+              ) : (
+                claim.resumable && (
+                  <button
+                    onClick={onResume}
+                    className="flex-1 rounded-xl bg-sky py-2.5 text-sm font-semibold text-white transition hover:bg-sky-dark"
+                  >
+                    Continue claim
+                  </button>
+                )
+              )}
+              {claim.deletable && <DeleteButton onDelete={onDelete} />}
+            </div>
           </div>
         )}
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
@@ -240,49 +363,49 @@ function ClaimDetailPanel({
         </section>
       )}
 
-      <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-baseline justify-between">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">Documents</h3>
-          <p className="text-xs text-muted">
-            {claim.documents.length - missing.length} of {claim.documents.length} ready
-          </p>
-        </div>
-        {claim.documents.length === 0 ? (
-          <p className="text-sm text-muted">No document checklist was saved for this claim.</p>
-        ) : (
-          <ul className="space-y-2">
-            {claim.documents.map((d) => (
-              <li key={d.document_code} className="flex items-center gap-3 text-sm">
-                <span
-                  aria-hidden
-                  className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
-                    d.is_provided ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
-                  }`}
-                >
-                  {d.is_provided ? "✓" : "!"}
-                </span>
-                <span className="min-w-0 flex-1 text-ink">{docName(d, language)}</span>
-                <span className={`text-xs ${d.is_provided ? "text-muted" : "font-medium text-amber-800"}`}>
-                  {d.is_provided ? "Have it" : "Needed"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {claim.claim_form_data && (
+        <>
+          <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
+            <div className="mb-3 flex items-baseline justify-between">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">Documents</h3>
+              <p className="text-xs text-muted">
+                {claim.documents.length - missing.length} of {claim.documents.length} ready
+              </p>
+            </div>
+            <ul className="space-y-2">
+              {claim.documents.map((d) => (
+                <li key={d.document_code} className="flex items-center gap-3 text-sm">
+                  <span
+                    aria-hidden
+                    className={`grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                      d.is_provided ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"
+                    }`}
+                  >
+                    {d.is_provided ? "✓" : "!"}
+                  </span>
+                  <span className="min-w-0 flex-1 text-ink">{docName(d, language)}</span>
+                  <span className={`text-xs ${d.is_provided ? "text-muted" : "font-medium text-amber-800"}`}>
+                    {d.is_provided ? "Have it" : "Needed"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
 
-      <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
-        <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Claim form</h3>
-        <Rows rows={formRows} />
-        {claim.expected_settlement_days_min !== null && (
-          <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
-            Expected settlement in{" "}
-            <span className="font-semibold text-ink">
-              {claim.expected_settlement_days_min}–{claim.expected_settlement_days_max} days
-            </span>
-          </p>
-        )}
-      </section>
+          <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Claim form</h3>
+            <Rows rows={formRows} />
+            {claim.expected_settlement_days_min !== null && (
+              <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
+                Expected settlement in{" "}
+                <span className="font-semibold text-ink">
+                  {claim.expected_settlement_days_min}–{claim.expected_settlement_days_max} days
+                </span>
+              </p>
+            )}
+          </section>
+        </>
+      )}
 
       {claim.evidence.length > 0 && (
         <section className="rounded-2xl border border-line bg-white p-4 shadow-sm">
@@ -395,10 +518,12 @@ export default function Dashboard({
   profile,
   language,
   onNewClaim,
+  onResume,
 }: {
   profile: Profile;
   language: Language;
   onNewClaim: () => void;
+  onResume: (sessionId: string) => void;
 }) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -415,8 +540,22 @@ export default function Dashboard({
 
   useEffect(load, [load]);
 
-  const drafts = data?.claims.filter((c) => c.claim_status === "draft").length ?? 0;
-  const filed = (data?.claims.length ?? 0) - drafts;
+  async function remove(sessionId: string) {
+    try {
+      await deleteClaim(profile.id, sessionId);
+      if (selected === sessionId) setSelected(null);
+      load();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  const claims = data?.claims ?? [];
+  const groups = [
+    { title: "In progress", items: claims.filter((c) => c.resumable) },
+    { title: "Filed", items: claims.filter((c) => c.conversation_stage === "FILED") },
+    { title: "Closed", items: claims.filter((c) => !c.resumable && c.conversation_stage !== "FILED") },
+  ];
   const uninsured = profile.vehicles.filter((v) => !v.policy);
 
   return (
@@ -425,7 +564,7 @@ export default function Dashboard({
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-navy">Hi {profile.full_name.split(" ")[0]}</h1>
-            <p className="mt-1 text-sm text-muted">Your policies and claims in one place.</p>
+            <p className="mt-1 text-sm text-muted">Pick up a claim where you left off, or start a new one.</p>
           </div>
           <button
             onClick={onNewClaim}
@@ -444,32 +583,37 @@ export default function Dashboard({
           </p>
         )}
 
-        <Section
-          title="Claims"
-          aside={data && data.claims.length > 0 && <p className="text-xs text-muted">{drafts} draft · {filed} filed</p>}
-        >
-          {!data ? (
-            <p className="text-sm text-muted">Loading your claims…</p>
-          ) : data.claims.length === 0 ? (
+        {!data ? (
+          <p className="text-sm text-muted">Loading your claims…</p>
+        ) : claims.length === 0 ? (
+          <Section title="Claims">
             <div className="rounded-2xl border border-dashed border-line bg-white p-6 text-center">
               <p className="text-sm font-medium text-ink">No claims yet</p>
               <p className="mt-1 text-sm text-muted">
                 Describe what happened to your vehicle and we&apos;ll tell you if a claim is worth it.
               </p>
             </div>
-          ) : (
-            <div className="grid gap-3 lg:grid-cols-2">
-              {data.claims.map((c) => (
-                <ClaimRow
-                  key={c.session_id}
-                  claim={c}
-                  active={c.session_id === selected}
-                  onSelect={() => setSelected(c.session_id)}
-                />
-              ))}
-            </div>
-          )}
-        </Section>
+          </Section>
+        ) : (
+          groups
+            .filter((g) => g.items.length > 0)
+            .map((g) => (
+              <Section key={g.title} title={g.title} aside={<p className="text-xs text-muted">{g.items.length}</p>}>
+                <div className="grid gap-3 lg:grid-cols-2">
+                  {g.items.map((c) => (
+                    <ClaimRow
+                      key={c.session_id}
+                      claim={c}
+                      active={c.session_id === selected}
+                      onSelect={() => setSelected(c.session_id)}
+                      onResume={() => onResume(c.session_id)}
+                      onDelete={() => remove(c.session_id)}
+                    />
+                  ))}
+                </div>
+              </Section>
+            ))
+        )}
 
         <Section title="Policies">
           {data && (
@@ -490,11 +634,14 @@ export default function Dashboard({
       <aside className={`min-w-0 md:sticky md:top-20 ${selected ? "" : "hidden md:block"}`}>
         {selected ? (
           <ClaimDetailPanel
+            key={selected}
             userId={profile.id}
             sessionId={selected}
             language={language}
             onBack={() => setSelected(null)}
-            onFiled={load}
+            onChanged={load}
+            onResume={() => onResume(selected)}
+            onDelete={() => remove(selected)}
           />
         ) : (
           <div className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">

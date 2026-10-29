@@ -85,6 +85,8 @@ async def file_claim(user_id: str, session_id: str) -> dict:
     claim = await db.claim_detail(user_id, session_id)
     if claim is None:
         raise HTTPException(404, "Claim not found")
+    if claim["claim_status"] is None:
+        raise HTTPException(409, "This claim isn't ready to file yet. Continue it in chat.")
     if claim["claim_status"] != "draft":
         raise HTTPException(409, "This claim is already filed")
     try:
@@ -100,18 +102,38 @@ async def file_claim(user_id: str, session_id: str) -> dict:
     return {"claim_reference_number": reference_number}
 
 
-@app.post("/livekit/token")
-async def livekit_token(user_id: str, language: str = "hi") -> dict:
-    """Credentials for a new claim conversation: a fresh room with the claim agent in it."""
+@app.delete("/users/{user_id}/claims/{session_id}")
+async def delete_claim(user_id: str, session_id: str) -> dict:
+    """Delete a claim the user no longer wants, with its whole conversation (not once filed)."""
     _known_user(user_id)
+    claim = await db.claim_detail(user_id, session_id)
+    if claim is None:
+        raise HTTPException(404, "Claim not found")
+    if not claim["deletable"]:
+        raise HTTPException(409, "A filed claim is with the insurer and can't be deleted")
+    await db.delete_claim(session_id)
+    return {"deleted": session_id}
+
+
+@app.post("/livekit/token")
+async def livekit_token(user_id: str, language: str = "hi", session_id: str | None = None) -> dict:
+    """Credentials for a claim conversation: a fresh room with the claim agent in it. With
+    session_id, the agent picks that claim up where it was left."""
+    _known_user(user_id)
+    attributes = {"user_id": user_id, "language": "en" if language == "en" else "hi"}
+    if session_id:
+        claim = await db.claim_detail(user_id, session_id)
+        if claim is None or not claim["resumable"]:
+            raise HTTPException(409, "This claim can't be continued")
+        attributes["resume_session_id"] = session_id
     user = load_wallet().users[user_id]
     room = f"claim-{user_id}-{uuid.uuid4().hex[:8]}"
     token = (
         api.AccessToken()  # LIVEKIT_API_KEY / LIVEKIT_API_SECRET
         .with_identity(user_id)
         .with_name(user.full_name)
-        # the agent reads who is calling, and in which language to start, from these
-        .with_attributes({"user_id": user_id, "language": "en" if language == "en" else "hi"})
+        # the agent reads who is calling, the language, and any claim to resume from these
+        .with_attributes(attributes)
         .with_grants(api.VideoGrants(room_join=True, room=room))
         .with_room_config(RoomConfiguration(agents=[RoomAgentDispatch(agent_name=AGENT_NAME)]))
         .to_jwt()

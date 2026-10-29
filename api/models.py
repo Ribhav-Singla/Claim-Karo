@@ -26,6 +26,7 @@ SessionState = Literal[
     "FILED",
     "NO_COVER",
     "ADVISED_NO_CLAIM",
+    "CANCELLED",
 ]
 
 
