@@ -1,84 +1,78 @@
 {
   "users": [
     {
-      "id": "u_ravi",
-      "full_name": "Ravi Kumar",
+      "id": "u_babu",
+      "full_name": "Babu Khan",
       "preferred_language": "hi",
       "phone_number": "+91-90000-11111"
     },
     {
-      "id": "u_priya",
-      "full_name": "Priya Sharma",
+      "id": "u_nadarajan",
+      "full_name": "Nadarajan G",
       "preferred_language": "en",
       "phone_number": "+91-90000-22222"
     },
     {
-      "id": "u_ashraf",
-      "full_name": "Ashraf Ali",
-      "preferred_language": "hi",
-      "phone_number": "+91-90000-33333"
-    },
-    {
-      "id": "u_neha",
-      "full_name": "Neha Verma",
+      "id": "u_sahayasaila",
+      "full_name": "Sahayasaila T",
       "preferred_language": "en",
-      "phone_number": "+91-90000-44444"
+      "phone_number": "+91-90000-33333"
     }
   ],
   "vehicles": [
     {
-      "id": "v_ravi_bike",
-      "user_id": "u_ravi",
+      "id": "v_babu_bike",
+      "user_id": "u_babu",
       "vehicle_type": "2W",
-      "vehicle_number": "UP16AB4521",
-      "brand": "Royal Enfield",
-      "model": "Classic 350",
-      "manufacture_year": 2022
-    },
-    {
-      "id": "v_ravi_scooty",
-      "user_id": "u_ravi",
-      "vehicle_type": "2W",
-      "vehicle_number": "UP16Z9001",
-      "brand": "Honda",
-      "model": "Activa 4G",
-      "manufacture_year": 2016
-    },
-    {
-      "id": "v_priya_creta",
-      "user_id": "u_priya",
-      "vehicle_type": "4W",
-      "vehicle_number": "DL3CAF7788",
-      "brand": "Hyundai",
-      "model": "Creta SX",
-      "manufacture_year": 2023
-    },
-    {
-      "id": "v_priya_swift",
-      "user_id": "u_priya",
-      "vehicle_type": "4W",
-      "vehicle_number": "DL8CX1234",
-      "brand": "Maruti",
-      "model": "Swift VXi",
+      "vehicle_number": "MH49BH1512",
+      "brand": "Bajaj",
+      "model": "Pulsar 150",
       "manufacture_year": 2021
     },
     {
-      "id": "v_ashraf_dzire",
-      "user_id": "u_ashraf",
+      "id": "v_babu_car",
+      "user_id": "u_babu",
+      "vehicle_type": "4W",
+      "vehicle_number": "HR52H9260",
+      "brand": "Maruti Suzuki",
+      "model": "Ertiga ZXi",
+      "manufacture_year": 2022
+    },
+    {
+      "id": "v_nadarajan_bike",
+      "user_id": "u_nadarajan",
+      "vehicle_type": "2W",
+      "vehicle_number": "TG153335",
+      "brand": "Yamaha",
+      "model": "MT-15",
+      "manufacture_year": 2022
+    },
+    {
+      "id": "v_nadarajan_car",
+      "user_id": "u_nadarajan",
+      "vehicle_type": "4W",
+      "vehicle_number": "DL12TC0271",
+      "brand": "MG",
+      "model": "Hector Sharp",
+      "manufacture_year": 2021
+    },
+    {
+      "id": "v_sahayasaila_bike",
+      "user_id": "u_sahayasaila",
+      "vehicle_type": "2W",
+      "vehicle_number": "TN12B5422",
+      "brand": "Bajaj",
+      "model": "Pulsar NS200",
+      "manufacture_year": 2020
+    },
+    {
+      "id": "v_sahayasaila_car",
+      "user_id": "u_sahayasaila",
       "vehicle_type": "4W",
       "vehicle_number": "TN12C0455",
       "brand": "Maruti Suzuki",
       "model": "Swift Dzire LXi",
       "manufacture_year": 2015
-    },
-    {
-      "id": "v_neha_jupiter",
-      "user_id": "u_neha",
-      "vehicle_type": "2W",
-      "vehicle_number": "MH12QW7781",
-      "brand": "TVS",
-      "model": "Jupiter",
-      "manufacture_year": 2023
     }
   ]
 }

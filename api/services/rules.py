@@ -305,11 +305,9 @@ def missing_documents(incident: Incident, policy: Policy, evidence: list[Evidenc
     return [doc for doc in required_documents(incident, policy) if doc not in have]
 
 
-def required_photo_kinds(policy: Policy, vehicle: Vehicle) -> list[str]:
+def required_photo_kinds(policy: Policy) -> list[str]:
     # damage_wide is read for the number plate too, so no separate number_plate shot.
     kinds = ["damage_wide"]
-    if vehicle.vehicle_type == "4W":
-        kinds.append("odometer")
     if "dl" in policy.required_documents:
         kinds.append("dl")
     return kinds

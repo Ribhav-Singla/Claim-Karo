@@ -254,9 +254,8 @@ async def file_claim(session_id: str) -> str | None:
             session_id,
         )
         policy = load_wallet().policies[policy_id]
-        vehicle = load_wallet().vehicles[policy.vehicle_id]
         missing = rules.unverified_kinds(
-            rules.required_photo_kinds(policy, vehicle), {r["evidence_type"] for r in verified}
+            rules.required_photo_kinds(policy), {r["evidence_type"] for r in verified}
         )
         if missing:
             raise DocumentsNotVerified(missing)

@@ -121,7 +121,8 @@ class ClaimAgent(Agent):
             note = (
                 "Start with one short sentence congratulating the user: their vehicle is "
                 "covered by the policy they bought through Paytm, so they made the right "
-                "choice. Then explain the verdict. " + note
+                "choice. Then explain the verdict, mention the 3-4 days in the service "
+                "centre and that the ₹1,000 file charge is free through Paytm. " + note
             )
         return json.dumps(
             {

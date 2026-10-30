@@ -50,9 +50,8 @@ class Claim:
 
     def next_photo_kind(self) -> str | None:
         assert self.policy is not None
-        vehicle = load_wallet().vehicles[self.policy.vehicle_id]
         done = {e.evidence_type for e in self.evidence if e.is_accepted}
-        pending = rules.required_photo_kinds(self.policy, vehicle)
+        pending = rules.required_photo_kinds(self.policy)
         return next((k for k in pending if k not in done), None)
 
     def restore(self, saved: dict) -> None:

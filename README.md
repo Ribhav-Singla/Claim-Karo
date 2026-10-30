@@ -208,15 +208,18 @@ class Session:
 
 `api/data/users.json` (users + vehicles) and `api/data/policies.json`:
 
-| # | Policy | Vehicle | Key terms | Purpose |
-|---|---|---|---|---|
-| 1 | `POL-RAVI-2W` | Ravi's Royal Enfield Classic 350 (2022), `UP16AB4521` | comprehensive, NCB 35%, OD premium ₹3,000, deductibles ₹100 + ₹500 voluntary, no addons | Scenario 1 → `dont_claim` |
-| 2 | `POL-PRIYA-4W` | Priya's Hyundai Creta (2023), `DL3CAF7788` | comprehensive, NCB 45%, OD premium ₹14,000, deductible ₹1,000, `zero_dep`, cashless at "Sharma Motors Noida" | Scenario 2 → `claim` |
-| 3 | `POL-PRIYA-4W-2` | Priya's Maruti Swift (2021), `DL8CX1234` | comprehensive, NCB 50%, `ncb_protect` | Verdict flip on a small claim |
-| 4 | `POL-RAVI-SCOOTY-TP` | Ravi's Honda Activa (2016), `UP16Z9001` | `third_party_only` | `NO_COVER` for own damage |
+Three users, one per folder in `api/data/case1..3`, built from the DL, plate and damage
+photos there so those images can be uploaded as test evidence. Every policy is comprehensive
+and requires only the driving licence (`dl`).
 
-Ravi's OD premium was raised from ₹1,800 to ₹3,000, and a ₹500 voluntary deductible
-added, so that Scenario 1 clearly lands on `dont_claim` (see §12).
+| # | Policy | Vehicle | Key terms | Test images |
+|---|---|---|---|---|
+| 1 | `POL-BABU-2W` | Babu Khan's Bajaj Pulsar 150 (2021), `MH49BH1512` | NCB 35%, OD premium ₹2,400, deductibles ₹100 + ₹500 voluntary, no add-ons | `case1`: DL, rear plate |
+| 2 | `POL-BABU-4W` | Babu Khan's Maruti Ertiga (2022), `HR52H9260` | NCB 20%, OD premium ₹15,500, deductible ₹1,000, `zero_dep`, `rsa` | `case1`: burnt Ertiga (the `23BH4589AZ` car is a wrong-vehicle test) |
+| 3 | `POL-NADARAJAN-2W` | Nadarajan G's Yamaha MT-15 (2022), `TG153335` | NCB 25%, OD premium ₹2,800, deductible ₹100, `zero_dep` | `case2`: DL, MT-15 damage, detached plate |
+| 4 | `POL-NADARAJAN-4W` | Nadarajan G's MG Hector (2021), `DL12TC0271` | NCB 50%, OD premium ₹18,000, deductible ₹1,000, `ncb_protect`, `rsa` | `case2`: Hector rear damage |
+| 5 | `POL-SAHAYASAILA-2W` | Sahayasaila T's Bajaj Pulsar NS200 (2020), `TN12B5422` | NCB 45%, OD premium ₹2,600, deductible ₹100, no add-ons | `case3`: Pulsar damage (plate only partly readable) |
+| 6 | `POL-SAHAYASAILA-4W` | Sahayasaila T's Maruti Swift Dzire (2015), `TN12C0455` | NCB 25%, OD premium ₹6,500, deductible ₹1,000, `rsa` | `case3`: DL, Dzire rear damage |
 
 ---
 
@@ -268,8 +271,8 @@ Documents: `policy_copy` and `rc` are auto-satisfied from the wallet. `garage_es
 is waived on the cashless route (the network garage submits it). `fir` is added whenever
 `fir_required()`.
 
-Required photos: `damage_wide` (must show the number plate) for every vehicle, plus
-`odometer` for 4W.
+Required photos: `damage_wide` (must show the number plate) for every vehicle, plus `dl`
+when the policy requires it. No odometer photo is asked for.
 
 ---
 
@@ -332,7 +335,7 @@ POST /users/{user_id}/claims/{session_id}/file  file a draft; {claim_reference_n
                                                 don't match)
 DELETE /users/{user_id}/claims/{session_id}     delete a claim and its whole conversation
                                                 (409 once filed)
-POST /livekit/token?user_id=u_ravi&language=hi[&session_id=…]
+POST /livekit/token?user_id=u_babu&language=hi[&session_id=…]
                                                 {server_url, participant_token}: a new room with
                                                 the claim-karo agent in it; with session_id the
                                                 agent resumes that claim (state + chat history)
@@ -455,17 +458,18 @@ py -3.13 -m venv .venv          # or python3.11+ -m venv .venv
 ## 12. Demo scenarios (build exactly these)
 
 **Scenario 1 — Two-wheeler scrape, Hindi, advise not to claim**
-User (Ravi): "Signal pe bike ko taxi ne maar diya, ₹4,200 ka kharcha bata raha hai mechanic."
-→ policy 1 matched → ₹4,200 − 35% depreciation (₹1,470) − ₹600 deductibles = payout
-**₹2,130**; NCB loss ₹1,050 next year, **₹2,550** over three years → `dont_claim`
+User (Babu Khan): "Signal pe bike ko taxi ne maar diya, ₹4,200 ka kharcha bata raha hai
+mechanic."
+→ policy 1 matched → ₹4,200 − 45% depreciation (₹1,890) − ₹600 deductibles = payout
+**₹1,710**; NCB loss ₹840 next year, **₹2,040** over three years → `dont_claim`
 → agent explains in Hindi and recommends paying out of pocket; offers to file anyway.
 
-**Scenario 2 — Car hits divider, English, claim worth filing**
-User (Priya): "Hit a divider on the expressway last night, garage says ₹38,000."
-→ policy 2 (zero_dep) → payout ₹37,000 vs NCB loss ₹14,000 over three years → `claim`
-→ EVIDENCE: first photo `PLATE_NOT_VISIBLE` → retake accepted
-→ odometer shot → form pre-filled, missing: `dl` → settlement "7–9 days cashless if DL
-uploaded today, 12–14 otherwise" → File → reference number.
+**Scenario 2 — Car rear-ended, English, claim worth filing**
+User (Nadarajan G): "Someone hit the back of my Hector, garage says ₹38,000."
+→ policy 4 (`ncb_protect`) → ₹38,000 − 45% depreciation (₹17,100) − ₹1,000 = payout
+**₹19,900** vs NCB loss ₹0 → `claim`
+→ EVIDENCE: `case2` Hector photo (plate `DL12TC0271`) → `case2` DL
+→ form pre-filled → File → reference number.
 
 **Scenario 3 (P2) — Third-party damage**: user hit someone else's car; agent routes to
 third-party cover, says FIR is required, explains own-damage portion separately.

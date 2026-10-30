@@ -94,8 +94,8 @@ The numbers:
 The recommendation is clear: **claim.**
 
 Priya uploads a damage photo. Claim Karo spots that the number plate isn't
-visible and asks her to retake it. After the right photo and the odometer
-reading, the claim form fills itself. It flags the missing driving licence,
+visible and asks her to retake it. After the right photo, the claim form
+fills itself. It flags the missing driving licence,
 estimates a cashless settlement in 7 to 9 days, and Priya files with one tap.
 
 Then Claim Karo closes with:

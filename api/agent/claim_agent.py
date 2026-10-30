@@ -248,6 +248,8 @@ async def entrypoint(ctx: JobContext) -> None:
             target_language_code=f"{language}-IN",
             model=os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"),
             speaker=os.getenv("SARVAM_TTS_SPEAKER", "shubh"),
+            # Below 1.0 so the voice sounds calm and unhurried, like a person on a call.
+            pace=float(os.getenv("SARVAM_TTS_PACE", "0.85")),
         ),
         vad=ctx.proc.userdata["vad"],
         turn_handling={
