@@ -92,5 +92,52 @@
     "excluded_conditions": ["drunk_driving", "no_valid_dl"],
     "required_documents": ["rc", "dl", "policy_copy", "fir"],
     "cashless_garage_names": []
+  },
+  {
+    "id": "POL-ASHRAF-4W",
+    "user_id": "u_ashraf",
+    "driving_licence_number": "AN01 20130003278",
+    "driving_licence_holder_name": "Ashraf Ali",
+    "driving_licence_valid_until": "2033-09-22",
+    "vehicle_id": "v_ashraf_dzire",
+    "insurer_name": "Bharat Suraksha General Insurance",
+    "policy_number": "BSG/PC/2026/0072641",
+    "coverage_type": "comprehensive",
+    "coverage_start_date": "2026-04-01",
+    "coverage_end_date": "2027-03-31",
+    "insured_declared_value_inr": 260000,
+    "own_damage_premium_inr": 6500,
+    "no_claim_bonus_pct": 25,
+    "compulsory_deductible_inr": 1000,
+    "voluntary_deductible_inr": 0,
+    "add_on_covers": ["rsa"],
+    "excluded_conditions": ["drunk_driving", "no_valid_dl", "commercial_use"],
+    "required_documents": ["rc", "dl", "policy_copy", "garage_estimate"],
+    "cashless_garage_names": [
+      "Poonamallee Maruti Service Centre",
+      "Chennai Auto Care Porur"
+    ]
+  },
+  {
+    "id": "POL-NEHA-2W",
+    "user_id": "u_neha",
+    "driving_licence_number": "MH12 20190045821",
+    "driving_licence_holder_name": "Neha Verma",
+    "driving_licence_valid_until": "2039-05-14",
+    "vehicle_id": "v_neha_jupiter",
+    "insurer_name": "Sahyog General Insurance",
+    "policy_number": "SGI/2W/2026/0558120",
+    "coverage_type": "comprehensive",
+    "coverage_start_date": "2026-05-20",
+    "coverage_end_date": "2027-05-19",
+    "insured_declared_value_inr": 68000,
+    "own_damage_premium_inr": 1800,
+    "no_claim_bonus_pct": 20,
+    "compulsory_deductible_inr": 100,
+    "voluntary_deductible_inr": 0,
+    "add_on_covers": ["zero_dep", "rsa"],
+    "excluded_conditions": ["drunk_driving", "no_valid_dl", "commercial_use"],
+    "required_documents": ["rc", "dl", "policy_copy", "garage_estimate"],
+    "cashless_garage_names": ["Kothrud TVS Care Pune"]
   }
 ]

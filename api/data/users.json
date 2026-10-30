@@ -11,6 +11,18 @@
       "full_name": "Priya Sharma",
       "preferred_language": "en",
       "phone_number": "+91-90000-22222"
+    },
+    {
+      "id": "u_ashraf",
+      "full_name": "Ashraf Ali",
+      "preferred_language": "hi",
+      "phone_number": "+91-90000-33333"
+    },
+    {
+      "id": "u_neha",
+      "full_name": "Neha Verma",
+      "preferred_language": "en",
+      "phone_number": "+91-90000-44444"
     }
   ],
   "vehicles": [
@@ -49,6 +61,24 @@
       "brand": "Maruti",
       "model": "Swift VXi",
       "manufacture_year": 2021
+    },
+    {
+      "id": "v_ashraf_dzire",
+      "user_id": "u_ashraf",
+      "vehicle_type": "4W",
+      "vehicle_number": "TN12C0455",
+      "brand": "Maruti Suzuki",
+      "model": "Swift Dzire LXi",
+      "manufacture_year": 2015
+    },
+    {
+      "id": "v_neha_jupiter",
+      "user_id": "u_neha",
+      "vehicle_type": "2W",
+      "vehicle_number": "MH12QW7781",
+      "brand": "TVS",
+      "model": "Jupiter",
+      "manufacture_year": 2023
     }
   ]
 }
