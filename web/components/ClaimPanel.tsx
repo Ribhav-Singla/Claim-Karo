@@ -232,6 +232,7 @@ export default function ClaimPanel({
             <div className="mt-4 rounded-xl bg-navy p-4 text-center text-white">
               <p className="text-xs opacity-70">Reference number</p>
               <p className="mt-1 font-mono text-lg font-semibold tracking-wide">{referenceNo}</p>
+              <p className="mt-2 text-xs opacity-80">● Status tracking on. We'll let you know when it changes.</p>
             </div>
           ) : (
             state.state === "FORM_REVIEW" && (

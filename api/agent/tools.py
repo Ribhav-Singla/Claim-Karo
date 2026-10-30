@@ -113,14 +113,22 @@ class ClaimAgent(Agent):
         covered = claim.viability.verdict != "not_covered"
         await claim.set_stage("VIABILITY" if covered else "NO_COVER")
         await claim.publish()
+        note = (
+            "If estimate_pending, say claiming makes sense only above breakeven_estimate_inr "
+            "and ask for the garage estimate. If not_covered, say why from the reason codes."
+        )
+        if covered:
+            note = (
+                "Start with one short sentence congratulating the user: their vehicle is "
+                "covered by the policy they bought through Paytm, so they made the right "
+                "choice. Then explain the verdict. " + note
+            )
         return json.dumps(
             {
                 "policy": f"{policy.insurer_name}, NCB {policy.no_claim_bonus_pct}%, "
                 f"add-ons {policy.add_on_covers or 'none'}",
                 "verdict (final, do not recompute)": claim.viability.model_dump(),
-                "note": "If estimate_pending, say claiming makes sense only above "
-                "breakeven_estimate_inr and ask for the garage estimate. If not_covered, "
-                "say why from the reason codes.",
+                "note": note,
             }
         )
 

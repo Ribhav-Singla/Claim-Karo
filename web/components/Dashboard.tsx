@@ -179,6 +179,7 @@ function ClaimRow({
             <>
               <p className="text-[11px] text-muted">Reference</p>
               <p className="font-mono text-sm font-semibold text-ink">{claim.claim_reference_number}</p>
+              <p className="mt-0.5 text-[11px] font-medium text-emerald-700">● Tracking status</p>
             </>
           ) : (
             <>
@@ -299,6 +300,7 @@ function ClaimDetailPanel({
             <p className="text-xs opacity-70">Reference number</p>
             <p className="mt-1 font-mono text-lg font-semibold tracking-wide">{claim.claim_reference_number}</p>
             <p className="mt-1 text-xs opacity-70">Filed {claim.filed_at && formatDate(claim.filed_at)}</p>
+            <p className="mt-2 text-xs opacity-80">● Status tracking on. We'll let you know when it changes.</p>
           </div>
         ) : (
           <div className="mt-4 space-y-3 rounded-xl bg-canvas p-4">

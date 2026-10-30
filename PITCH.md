@@ -5,7 +5,7 @@
 ### Claim Karo
 ### Know before you claim.
 
-**AI-powered insurance journeys for every Paytm customer**  
+**Your insurance companion inside Paytm — from accident to settlement**  
 Track 2: AI-Powered Financial Journeys  
 Team Claim Karo
 
@@ -17,214 +17,244 @@ Team Claim Karo
 
 Imagine your bike is damaged in an accident. The repair will cost ₹4,200.
 
-You open your insurance app, but immediately face confusing policy terms, forms,
-document requirements, photo uploads, and one important question:
+You open your insurance app and are hit with policy terms, forms, document lists,
+photo rules, and one question nobody answers for you:
 
 **Should I even file this claim?**
 
-Most insurance platforms are designed to help customers submit claims. But they
-do not help customers understand whether claiming is financially beneficial.
+Insurance apps help you *submit* a claim. None of them tell you whether claiming
+is worth it. A small claim can shrink to almost nothing after deductibles and
+depreciation, and still cost you your No-Claim Bonus for years.
 
-A small claim can reduce the payout through deductibles and depreciation, while
-also causing the customer to lose their No-Claim Bonus.
+And once you do file, you are left alone: calling the insurer, refreshing portals,
+wondering what is happening with your money.
 
-This makes insurance stressful, complex, and easy to get wrong.
+For millions of first-time insurance buyers in India, this is where trust breaks.
 
 ### The solution
 
-Meet **Claim Karo** — a voice-first, AI-powered insurance assistant designed for
-the Paytm ecosystem.
+Meet **Claim Karo** — a voice-first insurance assistant that lives inside Paytm.
 
-A customer can simply speak in Hindi or English, describe the accident, and
-upload damage photos.
+The customer just speaks, in Hindi or English, about what happened. Claim Karo:
 
-Claim Karo then:
+- Understands the accident through a natural conversation
+- Finds the right policy already sitting in the customer's Paytm wallet
+- **Congratulates them for being protected through Paytm**
+- Calculates the real payout: deductible, depreciation, IDV, exclusions
+- Shows the No-Claim Bonus they would lose
+- Tells them honestly whether to claim, not claim, or think it over
+- Checks every photo the way a surveyor would, and asks for a retake if needed
+- Fills in the claim form live
+- Flags missing documents
+- Estimates the settlement time
+- Files the claim in one tap
+- **Keeps tracking the claim and tells them every time the status changes**
 
-- Understands the incident through conversation
-- Finds the relevant policy from the customer’s Paytm wallet
-- Calculates the expected payout
-- Accounts for deductibles, depreciation, IDV, exclusions, and No-Claim Bonus loss
-- Tells the customer whether filing is worth it
-- Checks whether photos meet surveyor requirements
-- Pre-fills the claim form live
-- Identifies missing documents
-- Estimates settlement time
-- Guides the customer through filing the claim
+### Demo 1: When not to claim
 
-### Demo: When not to claim
-
-Let’s take Ravi.
+Meet Ravi.
 
 He says in Hindi:
 
-> “Signal pe bike ko taxi ne maar diya. Mechanic ₹4,200 bata raha hai.”
+> "Signal pe bike ko taxi ne maar diya. Mechanic ₹4,200 bata raha hai."
 
-Claim Karo matches his motor policy and performs the calculation.
+Claim Karo finds his motor policy in his Paytm wallet in seconds:
 
-The estimated payout is ₹2,130 after depreciation and deductibles. But filing
-the claim would cost Ravi approximately ₹2,550 in lost No-Claim Bonus over the
-next three years.
+> "Badhai ho Ravi! Aapki bike Paytm se li gayi policy se insured hai — aapne sahi
+> choice ki thi."
 
-So instead of blindly pushing him to file, Claim Karo tells him:
+Then it does the maths. The payout after depreciation and deductibles is ₹2,130.
+But filing would cost Ravi about ₹2,550 in lost No-Claim Bonus over the next three
+years. So Claim Karo tells him:
 
-> “Aapke liye claim karna financially beneficial nahi hai.”
+> "Aapke liye claim karna financially beneficial nahi hai. Aapka No-Claim Bonus
+> surakshit hai."
 
-This is a critical difference:
+Ravi saves money **and** leaves trusting Paytm more than when he came in.
 
-**Claim Karo does not just process claims. It protects customers from making
-expensive decisions.**
+**Claim Karo does not just process claims. It protects customers from expensive
+decisions.**
 
-### Demo: When to claim
+### Demo 2: When to claim
 
-Now consider Priya.
+Now meet Priya.
 
-She says:
+> "I hit a divider. The garage says ₹38,000."
 
-> “I hit a divider. The garage says ₹38,000.”
+Claim Karo matches her policy:
 
-This time, her policy includes zero-depreciation coverage.
+> "Great news, Priya — your car is covered by the policy you bought on Paytm, with
+> zero-depreciation cover. You made the right choice."
 
-Claim Karo calculates:
+The numbers:
 
 - Expected payout: ₹37,000
-- Potential No-Claim Bonus loss: ₹14,000
+- No-Claim Bonus at stake: ₹14,000
 
-The recommendation is clear: **filing the claim makes financial sense.**
+The recommendation is clear: **claim.**
 
-Priya uploads a damage photo. The AI detects that the number plate is not
-visible and asks her to retake it.
+Priya uploads a damage photo. Claim Karo spots that the number plate isn't
+visible and asks her to retake it. After the right photo and the odometer
+reading, the claim form fills itself. It flags the missing driving licence,
+estimates a cashless settlement in 7 to 9 days, and Priya files with one tap.
 
-After the correct photo and odometer image are uploaded, the claim form is
-filled automatically.
+Then Claim Karo closes with:
 
-Claim Karo identifies the missing driving licence, estimates a cashless
-settlement timeline of 7 to 9 days, and lets Priya file the claim with a single
-action.
+> "Your claim is filed. Don't worry — I'll keep checking its status and let you
+> know every time something changes."
 
-## Proposed Solution
+Priya doesn't need to chase anyone. Paytm has her back until the money arrives.
 
-Claim Karo transforms insurance from a document-heavy process into a guided
-financial conversation.
+### Demo 3: "Why should I get my policy from Paytm?"
 
-The customer does not need to understand insurance jargon. They only need to
-explain what happened.
+Customers often ask this before they buy or renew. Claim Karo answers right
+inside the conversation:
 
-The assistant converts that conversation into:
+> "Paytm se policy lene ka sabse bada fayda yeh hai ki jab accident hota hai, aap
+> akele nahi hote. Aap bas boliye kya hua, main bataunga claim karna chahiye ya
+> nahi, form khud bharunga, aur claim file hone ke baad status bhi dekhta
+> rahunga."
 
-1. A structured incident
-2. A matched policy
-3. A transparent financial recommendation
-4. Verified evidence
-5. A complete claim submission
+> "With a Paytm policy, you get more than cover. When something goes wrong, I
+> help you decide whether to claim, fill in the form for you, and keep you
+> updated until it's settled. All in the app you already use every day."
 
-## Technology Stack
+The benefits Claim Karo highlights:
 
-Our technology stack combines AI with deterministic financial logic:
+- **One app for everything.** Policy, vehicle details, documents, claims and
+  payout all in the Paytm app the customer already trusts.
+- **Claim help built in.** Every policy bought on Paytm comes with Claim Karo:
+  voice guidance in Hindi or English, from the accident to the settlement.
+- **Honest advice, not just a form.** Paytm tells you when *not* to claim, so you
+  keep your No-Claim Bonus and pay less at renewal.
+- **No paperwork hunting.** The policy is already in the wallet. No searching
+  emails or PDFs when you need it most.
+- **Easy payments and renewals.** Pay with UPI or the Paytm wallet in seconds, and
+  get reminded before the policy expires.
+- **Compare before you buy.** See plans and add-ons like zero-depreciation side
+  by side, with a plain explanation of what each one means for your claim.
+- **Status updates.** After filing, the customer doesn't chase the insurer. Paytm
+  keeps them informed.
 
-- **Next.js** for the customer-facing web experience
-- **FastAPI and Python** for backend services
-- **LiveKit** for real-time voice conversations
-- **Sarvam AI** for Hindi-English speech recognition and text-to-speech
-- **Claude** for incident extraction, explanations, and photo understanding
-- **PostgreSQL** for claims, policies, evidence, and session state
-- A deterministic **Python rules engine** for payout, deductible, depreciation,
-  exclusion, and No-Claim Bonus calculations
+This is the moment where Claim Karo turns a support conversation into a sales
+conversation: the best argument for buying insurance on Paytm is how well
+Paytm takes care of you when you claim.
 
-Our core principle is:
+## Why this matters for Paytm
 
-### Rules decide. AI explains.
+### More audience
 
-The AI never invents policy numbers or performs unchecked financial calculations.
+- **New users through word of mouth.** A customer who was told "don't claim, you'll
+  save ₹2,500" tells their friends. Honest advice is the best marketing.
+- **Insurance buyers come to Paytm.** "Buy your policy on Paytm and get Claim Karo
+  for free" is a reason to choose Paytm over any other insurance channel.
+- **Hindi-first, voice-first.** It reaches the next hundred million users: people
+  who can't, or don't want to, fill English forms.
+- **Repeat visits.** Status updates bring the customer back to Paytm again and
+  again during the settlement period, not once a year at renewal.
 
-## Unique Selling Proposition
+### More business
 
-Claim Karo’s USP is **financially intelligent claim guidance**.
+- **Higher policy sales and renewals.** Customers who had a good claim experience
+  renew on the platform that helped them.
+- **Cross-sell moments.** A settled claim is the right time to offer add-ons such as
+  zero-depreciation, a top-up, or a repair loan from Paytm.
+- **Payouts land in Paytm.** Settlement money flows into the Paytm wallet or bank,
+  increasing balances and transactions.
+- **Partner value.** Insurers get complete, verified claims and fewer calls,
+  which makes Paytm the distribution partner they want to work with.
 
-Unlike traditional claim portals, it can recommend:
+### More trust
 
-- **Claim**
-- **Do not claim**
-- **Borderline — review the numbers**
-- **Not covered**
+- Every customer hears "you made the right choice with Paytm" at the moment they
+  need help the most.
+- Transparent numbers, and the honesty to say "don't claim", build trust that
+  carries over to payments, lending, and investments.
 
-It also combines voice, multilingual support, image verification, live form
-filling, and settlement estimation in one journey.
-
-This makes insurance more accessible for users who may be uncomfortable
-navigating complex English-first forms.
-
-## Paytm Ecosystem Fit
-
-Paytm already acts as a trusted financial companion for millions of Indians.
-
-Claim Karo extends that trust into insurance by connecting:
-
-- The customer’s Paytm wallet
-- Their vehicles and policies
-- A conversational AI assistant
-- A transparent claim experience
-
-The result is a more human insurance journey inside a familiar financial
-ecosystem.
-
-Instead of asking customers to search through policy documents, Claim Karo
-brings the answer to them through conversation.
-
-## Impact and Benefits
+## Benefits
 
 ### For customers
 
-- Reduces confusion and paperwork
-- Supports Hindi and English conversations
-- Prevents financially disadvantageous claims
-- Improves photo and document quality
-- Provides transparent payout calculations
-- Gives confidence before filing
+- Talk instead of filling forms, in Hindi or English
+- Know the real payout before deciding
+- Never lose a No-Claim Bonus on a claim that wasn't worth it
+- Photos and documents right the first time
+- One-tap filing
+- Status updates without chasing the insurer
 
 ### For insurers and partners
 
-- Fewer incomplete claim submissions
-- Better-quality evidence
-- Reduced manual clarification
-- More accurate first-time submissions
-- Faster processing and improved customer satisfaction
+- Fewer incomplete or rejected submissions
+- Verified evidence: plate and licence checked against policy records
+- Less manual back-and-forth
+- Faster processing and happier customers
 
 ### For Paytm
 
-- Deeper engagement with existing financial users
-- A more intelligent insurance experience
-- Increased trust across Paytm’s financial ecosystem
-- A foundation for future insurance, lending, and fintech journeys
+- New users and higher engagement
+- More insurance sales and renewals
+- Natural cross-sell for insurance, lending, and payments
+- A trusted, reusable AI layer for other complex financial journeys
+
+## Technology Stack
+
+- **Next.js** for the customer experience
+- **FastAPI and Python** for backend services
+- **LiveKit** for real-time voice conversations
+- **Sarvam AI** for Hindi-English speech recognition and text-to-speech
+- **Claude** for understanding the incident, explaining results, and reading photos
+- **PostgreSQL** for claims, policies, evidence, and session state
+- A deterministic **Python rules engine** for payout, deductible, depreciation,
+  exclusions, and No-Claim Bonus
+
+### Rules decide. AI explains.
+
+The AI never invents a number. Every rupee the customer hears comes from the
+rules engine.
+
+## Unique Selling Proposition
+
+**Financially honest claim guidance, inside the app people already trust.**
+
+Claim Karo recommends one of:
+
+- **Claim**
+- **Don't claim**
+- **Borderline — review the numbers**
+- **Not covered**
+
+And it stays with the customer from the first sentence to the final settlement:
+voice, two languages, photo verification, a live claim form, one-tap filing, and
+status tracking in one journey.
 
 ## Business Model
 
-Claim Karo can be offered as a B2B2C insurance intelligence layer.
+A B2B2C insurance intelligence layer, distributed through Paytm:
 
-Potential revenue channels include:
-
-- Per-claim processing fees from insurers
+- Per-claim fees from insurers
 - SaaS licensing for insurers and brokers
 - API access for embedded insurance partners
-- Premium assisted-claims services
-- Revenue sharing through Paytm insurance distribution
-
-The long-term opportunity is to make Claim Karo a reusable conversational layer
-for insurance and other complex financial journeys.
+- Premium assisted-claim services
+- Revenue share on Paytm insurance distribution, renewals, and cross-sell
 
 ## Closing
 
-Insurance should not feel like paperwork.
+Insurance should not feel like paperwork. It should feel like a friend who
+understands your situation, tells you the truth, and doesn't leave until the job
+is done.
 
-It should feel like a conversation with someone who understands your situation,
-explains your options, and helps you make the right financial decision.
+With Claim Karo, every Paytm customer knows:
 
-With Claim Karo, Paytm customers can know:
-
+- That they made the right choice by insuring with Paytm
 - What their policy covers
-- What they may receive
-- What documents they need
-- How long it may take
-- And most importantly — whether they should claim at all
+- What they will actually receive
+- Which documents they need
+- How long it will take
+- Whether they should claim at all
+
+And once they file, they hear the words every customer wants to hear:
+
+> **"Don't worry — I'll keep checking your claim and let you know."**
 
 ### Claim Karo: Know before you claim.
 
@@ -233,9 +263,9 @@ Thank you.
 ## Suggested Final Slide
 
 ### Claim Karo
-**AI-powered insurance journeys for Paytm customers**
+**Your insurance companion inside Paytm**
 
-**Speak. Understand. Decide. Claim.**
+**Speak. Understand. Decide. Claim. Relax.**
 
 **Track 2 — AI-Powered Financial Journeys**  
 Built with Claude + Sarvam AI + LiveKit

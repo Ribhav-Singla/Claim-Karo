@@ -6,8 +6,8 @@ from models import Language
 
 LINES: dict[str, dict[Language, str]] = {
     "greeting": {
-        "hi": "नमस्ते {name}! मैं Claim Karo हूँ। बताइए, आपकी गाड़ी के साथ क्या हुआ?",
-        "en": "Hi {name}! I'm Claim Karo. Tell me what happened to your vehicle.",
+        "hi": "नमस्ते {name}! मैं Claim Karo हूँ। बताइए, मैं आपकी क्या मदद कर सकता हूँ?",
+        "en": "Hi {name}! I'm Claim Karo. How can I help you today?",
     },
     "no_cover": {
         "hi": "माफ़ कीजिए, इस गाड़ी के लिए इस नुकसान पर आपकी पॉलिसी में कवर नहीं है।",
@@ -26,8 +26,14 @@ LINES: dict[str, dict[Language, str]] = {
         "en": "Okay, no claim then. Your No-Claim Bonus stays safe. Take care!",
     },
     "filed": {
-        "hi": "आपका claim फ़ाइल हो गया। रेफ़रेंस नंबर {ref} है।",
-        "en": "Your claim is filed. Your reference number is {ref}.",
+        "hi": (
+            "आपका claim फ़ाइल हो गया। रेफ़रेंस नंबर {ref} है। चिंता मत कीजिए, मैं आपके claim "
+            "का स्टेटस देखता रहूँगा और हर अपडेट आपको बताऊँगा।"
+        ),
+        "en": (
+            "Your claim is filed. Your reference number is {ref}. Don't worry, I'll keep "
+            "checking your claim's status and let you know every time it changes."
+        ),
     },
     "use_buttons": {
         "hi": "कृपया नीचे दिए बटन से चुनें।",
