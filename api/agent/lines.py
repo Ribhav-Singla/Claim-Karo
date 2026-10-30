@@ -6,7 +6,7 @@ from models import Language
 
 LINES: dict[str, dict[Language, str]] = {
     "greeting": {
-        "hi": "नमस्ते {name}! मैं Claim Karo हूँ। बताइए, मैं आपकी क्या मदद कर सकता हूँ?",
+        "hi": "नमस्ते {name}! मैं Claim Karo हूँ। बताइए, मैं आपकी क्या मदद कर सकती हूँ?",
         "en": "Hi {name}! I'm Claim Karo. How can I help you today?",
     },
     "no_cover": {
@@ -28,7 +28,7 @@ LINES: dict[str, dict[Language, str]] = {
     "filed": {
         "hi": (
             "आपका claim फ़ाइल हो गया। रेफ़रेंस नंबर {ref} है। चिंता मत कीजिए, मैं आपके claim "
-            "का स्टेटस देखता रहूँगा और हर अपडेट आपको बताऊँगा।"
+            "का स्टेटस देखती रहूँगी और हर अपडेट आपको बताऊँगी।"
         ),
         "en": (
             "Your claim is filed. Your reference number is {ref}. Don't worry, I'll keep "

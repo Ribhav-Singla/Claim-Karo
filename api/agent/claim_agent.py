@@ -243,13 +243,13 @@ async def entrypoint(ctx: JobContext) -> None:
     session = AgentSession[Claim](
         stt=sarvam.STT(language="unknown", model=os.getenv("SARVAM_STT_MODEL", "saaras:v4")),
         llm=ClaudeLLM(model=claude.MODEL),
-        # The male voice Shubh by default; plain "shubh" exists only on bulbul:v3.
+        # bulbul:v4-flash is Sarvam's low-latency streaming model. Its voice names carry the
+        # language: Ishita "enhi" speaks both Hindi and English, in a customer-support style.
         tts=sarvam.TTS(
             target_language_code=f"{language}-IN",
-            model=os.getenv("SARVAM_TTS_MODEL", "bulbul:v3"),
-            speaker=os.getenv("SARVAM_TTS_SPEAKER", "shubh"),
-            # Below 1.0 so the voice sounds calm and unhurried, like a person on a call.
-            pace=float(os.getenv("SARVAM_TTS_PACE", "0.85")),
+            model=os.getenv("SARVAM_TTS_MODEL", "bulbul:v4-flash"),
+            speaker=os.getenv("SARVAM_TTS_SPEAKER", "ishita_enhi_customer"),
+            pace=float(os.getenv("SARVAM_TTS_PACE", "1.0")),
         ),
         vad=ctx.proc.userdata["vad"],
         turn_handling={
