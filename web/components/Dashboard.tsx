@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  API_URL,
   deleteClaim,
   fetchClaim,
   fetchDashboard,
@@ -414,9 +415,17 @@ function ClaimDetailPanel({
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Photos checked</h3>
           <ul className="space-y-2 text-sm">
             {claim.evidence.map((e) => (
-              <li key={e.id} className="flex items-center justify-between gap-3">
-                <span className="text-ink">{PHOTO_LABEL[e.evidence_type] ?? label(e.evidence_type)}</span>
-                <span className={`text-xs font-medium ${e.is_accepted ? "text-emerald-700" : "text-red-600"}`}>
+              <li key={e.id} className="flex items-center gap-3">
+                {e.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`${API_URL}${e.url}`}
+                    alt={e.evidence_type}
+                    className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
+                  />
+                )}
+                <span className="min-w-0 flex-1 text-ink">{PHOTO_LABEL[e.evidence_type] ?? label(e.evidence_type)}</span>
+                <span className={`text-right text-xs font-medium ${e.is_accepted ? "text-emerald-700" : "text-red-600"}`}>
                   {e.is_accepted ? "Accepted" : `Retake: ${[...e.detail_mismatches, ...e.quality_issues].map(label).join(", ").toLowerCase()}`}
                 </span>
               </li>

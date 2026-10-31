@@ -4,11 +4,12 @@ import { RoomAudioRenderer, SessionProvider, useSession } from "@livekit/compone
 import { TokenSource } from "livekit-client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Chat from "@/components/Chat";
-import ClaimPanel from "@/components/ClaimPanel";
+import ClaimPanel, { ProgressBar } from "@/components/ClaimPanel";
 import Dashboard from "@/components/Dashboard";
 import Login from "@/components/Login";
+import PaytmHome from "@/components/PaytmHome";
 import { fetchClaim, fetchLiveKitToken, type Profile } from "@/lib/api";
-import { useClaim, type Language, type Message } from "@/lib/useClaim";
+import { useClaim, type ClaimState, type Language, type Message } from "@/lib/useClaim";
 
 type SessionProps = {
   profile: Profile;
@@ -42,9 +43,60 @@ function Session({ profile, language, resumeId, onSessionId }: SessionProps) {
   );
 }
 
+// On a phone the claim details sit in an accordion above the chat: the header always shows
+// the progress bar; open it to see the details, close it to get back to chat and voice.
+function MobileClaimAccordion({
+  state,
+  profile,
+  onFile,
+  open,
+  onToggle,
+}: {
+  state: ClaimState;
+  profile: Profile;
+  onFile: () => void;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="md:hidden">
+      <button
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls="claim-details"
+        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-left shadow-sm"
+      >
+        <div className="min-w-0 flex-1">
+          <ProgressBar state={state.state} percent={state.progress} compact />
+        </div>
+        <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-sky-dark">
+          {open ? "Hide" : "Details"}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            className={`transition ${open ? "rotate-180" : ""}`}
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </span>
+      </button>
+      {open && (
+        <div id="claim-details" className="mt-3 animate-fadein">
+          <ClaimPanel state={state} profile={profile} onFile={onFile} hideProgress />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Conversation({ profile, language, resumeId, onSessionId }: SessionProps) {
   // a resumed claim shows what was said before, above the live conversation
   const [history, setHistory] = useState<Message[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   useEffect(() => {
     if (!resumeId) return;
     let live = true;
@@ -66,10 +118,24 @@ function Conversation({ profile, language, resumeId, onSessionId }: SessionProps
     if (state.sessionId) onSessionId(state.sessionId);
   }, [state.sessionId, onSessionId]);
 
+  const file = () => decide("file");
+
   return (
-    <div className="grid gap-4 py-4 md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px]">
-      <Chat state={state} onText={sendText} onPhoto={sendPhoto} onDecide={decide} setMic={setMic} />
-      <ClaimPanel state={state} profile={profile} onFile={() => decide("file")} />
+    <div className="flex flex-col gap-3 py-3 md:grid md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px] md:gap-4 md:py-4">
+      <MobileClaimAccordion
+        state={state}
+        profile={profile}
+        onFile={file}
+        open={detailsOpen}
+        onToggle={() => setDetailsOpen((o) => !o)}
+      />
+      {/* on a phone the chat steps aside while the details are open */}
+      <div className={`min-h-0 ${detailsOpen ? "hidden md:flex" : "flex"} flex-col`}>
+        <Chat state={state} onText={sendText} onPhoto={sendPhoto} onDecide={decide} setMic={setMic} />
+      </div>
+      <div className="hidden min-h-0 md:block">
+        <ClaimPanel state={state} profile={profile} onFile={file} />
+      </div>
     </div>
   );
 }
@@ -134,22 +200,37 @@ function ProfileMenu({ profile, onLogout }: { profile: Profile; onLogout: () => 
 }
 
 type OpenChat = { run: number; resumeId: string | null };
+// login (number) -> Paytm home -> Claims dashboard -> claim conversation
+type View = "home" | "claims";
 
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [language, setLanguage] = useState<Language>("hi");
+  const [view, setView] = useState<View>("home");
   const [chat, setChat] = useState<OpenChat | null>(null); // null: the dashboard is showing
   const currentSession = useRef<string | null>(null); // the claim the open chat is on
 
   function login(p: Profile) {
     setProfile(p);
     setLanguage(p.preferred_language);
+    setView("home");
     setChat(null);
+  }
+
+  function logout() {
+    setProfile(null);
+    setChat(null);
+    setView("home");
   }
 
   function openChat(resumeId: string | null) {
     currentSession.current = resumeId;
     setChat((c) => ({ run: (c?.run ?? 0) + 1, resumeId }));
+  }
+
+  function goHome() {
+    setChat(null);
+    setView("home");
   }
 
   function switchLanguage(l: Language) {
@@ -162,10 +243,34 @@ export default function Home() {
     currentSession.current = id;
   }, []);
 
+  if (profile && view === "home" && !chat) {
+    return (
+      <div className="min-h-dvh bg-canvas">
+        <PaytmHome
+          profile={profile}
+          onOpenClaims={() => setView("claims")}
+          onLogout={logout}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-10 border-b border-line bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+          {profile && (
+            <button
+              onClick={goHome}
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-ink transition hover:bg-canvas"
+              aria-label="Back to Paytm home"
+              title="Paytm home"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M15 18l-6-6 6-6" />
+              </svg>
+            </button>
+          )}
           <button onClick={() => profile && setChat(null)} className="flex items-center gap-2" aria-label="Claim Karo home">
             <div className="grid h-8 w-8 place-items-center rounded-lg bg-navy text-sm font-bold text-white">CK</div>
             <span className="text-lg font-semibold tracking-tight text-navy">
@@ -225,7 +330,7 @@ export default function Home() {
                     <span className="text-base leading-none">+</span> New claim
                   </button>
                 )}
-                <ProfileMenu profile={profile} onLogout={() => setProfile(null)} />
+                <ProfileMenu profile={profile} onLogout={logout} />
               </div>
             </>
           )}

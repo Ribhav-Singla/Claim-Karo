@@ -12,10 +12,13 @@ def instructions(claim: Claim) -> str:
         for v in claim.vehicles
     )
     now = clock.now()
+    first = claim.user.full_name.split()[0]
     return f"""{claude.SYSTEM}
 
-You are on a call with {claim.user.full_name}. Right now it is {now:%A, %Y-%m-%d %H:%M} IST
-(Indian time; use this clock, not any other). Their vehicles:
+You are on a call with {claim.user.full_name}. Address them respectfully, always with the
+honorific "ji" after their first name and never the bare name: "{first} जी" in Hindi,
+"{first} ji" in English. Right now it is {now:%A, %Y-%m-%d %H:%M} IST (Indian time; use
+this clock, not any other). Their vehicles:
 {vehicles}
 
 How the claim goes:

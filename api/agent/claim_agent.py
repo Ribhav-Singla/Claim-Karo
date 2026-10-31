@@ -47,7 +47,7 @@ from agent.state import Claim  # noqa: E402
 from agent.tools import ClaimAgent  # noqa: E402
 from models import Evidence, Incident, Language  # noqa: E402
 from seed import load_wallet  # noqa: E402
-from services import claude, rules, settlement  # noqa: E402
+from services import claude, photos, rules, settlement  # noqa: E402
 
 log = logging.getLogger("agent")
 
@@ -86,7 +86,8 @@ async def on_photo(session: AgentSession[Claim], image: bytes, photo_id: str, mi
     kind = claim.next_photo_kind() if claim.stage == "EVIDENCE" else None
     if kind is None:
         return
-    claim.photos[photo_id] = {"status": "grading"}
+    photo_url = photos.save(photo_id, image)
+    claim.photos[photo_id] = {"status": "grading", "url": photo_url}
     await claim.publish()
 
     policy = claim.policy
@@ -104,7 +105,7 @@ async def on_photo(session: AgentSession[Claim], image: bytes, photo_id: str, mi
     evidence = Evidence(
         id=photo_id,
         evidence_type=kind,
-        file_path="",
+        file_path=photo_url,
         is_accepted=accepted,
         quality_issues=[] if accepted else list(grade.issues),
         ai_confidence_score=grade.confidence,
@@ -118,6 +119,7 @@ async def on_photo(session: AgentSession[Claim], image: bytes, photo_id: str, mi
         "status": "accepted" if accepted else "retake",
         "evidence_type": kind,
         "quality_issues": evidence.quality_issues + mismatches,
+        "url": photo_url,
     }
 
     if not accepted:

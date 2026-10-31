@@ -5,6 +5,7 @@
 // JSON snapshot on the "claim.state" text stream, which the side panel renders.
 import { useAgent, useLocalParticipant, useSessionContext, useSessionMessages, useTextStream } from "@livekit/components-react";
 import { useCallback, useMemo, useState } from "react";
+import { API_URL } from "./api";
 import { shrinkImage } from "./media";
 
 export type Language = "hi" | "en";
@@ -13,10 +14,11 @@ export type Status = "connecting" | "idle" | "thinking" | "closed";
 export type Message = { id: string; role: "bot" | "user"; text: string };
 export type Photo = {
   id: string;
-  preview: string;
+  preview: string; // a local data URL just after upload, or the API's copy on a resumed claim
   status: "grading" | "accepted" | "retake";
   evidence_type?: string;
   quality_issues?: string[];
+  url?: string | null;
 };
 export type Policy = {
   policy_id: string;
@@ -58,9 +60,32 @@ export type ClaimState = Omit<Snapshot, "photos"> & {
   status: Status;
   messages: Message[];
   photos: Photo[];
+  progress: number; // 0-100, how far the claim has come
   speaking: boolean; // the agent is talking
   micOn: boolean;
 };
+
+// How far along the claim is: 0 until the incident is captured, 60 once the verdict is in,
+// 90 when the photos are done and the form is ready, 100 when filed.
+export function claimProgress(state: string, photos: Record<string, { status: string }>): number {
+  switch (state) {
+    case "INTAKE":
+      return 0;
+    case "VIABILITY":
+    case "NO_COVER":
+    case "ADVISED_NO_CLAIM":
+    case "CANCELLED":
+      return 60;
+    case "EVIDENCE":
+      return Object.values(photos).some((p) => p.status === "accepted") ? 75 : 60;
+    case "FORM_REVIEW":
+      return 90;
+    case "FILED":
+      return 100;
+    default:
+      return 0;
+  }
+}
 
 const EMPTY: Snapshot = {
   sessionId: null,
@@ -117,18 +142,23 @@ export function useClaim(language: Language, history: Message[] = []) {
         ? "thinking"
         : "idle";
 
+  // Photos uploaded in this tab show their local preview straight away; on a resumed claim
+  // the agent's snapshot carries each earlier photo's url instead. Only this claim's photos:
+  // a cancelled claim's thumbnails disappear with it.
+  const uploadedHere: Photo[] = Object.entries(previews)
+    .filter(([, p]) => p.sessionId === snapshot.sessionId)
+    .map(([id, { preview }]) => ({ id, preview, ...(snapshot.photos[id] ?? { status: "grading" as const }) }));
+  const fromServer: Photo[] = Object.entries(snapshot.photos)
+    .filter(([id, p]) => !(id in previews) && p.url)
+    .map(([id, p]) => ({ id, preview: `${API_URL}${p.url}`, ...p }));
+  const photos = [...fromServer, ...uploadedHere];
+
   const state: ClaimState = {
     ...snapshot,
     status,
     messages,
-    // only this claim's photos: a cancelled claim's thumbnails disappear with it
-    photos: Object.entries(previews)
-      .filter(([, p]) => p.sessionId === snapshot.sessionId)
-      .map(([id, { preview }]) => ({
-        id,
-        preview,
-        ...(snapshot.photos[id] ?? { status: "grading" as const }),
-      })),
+    photos,
+    progress: claimProgress(snapshot.state, snapshot.photos),
     speaking: agent.state === "speaking",
     micOn: isMicrophoneEnabled,
   };

@@ -6,8 +6,8 @@ from models import Language
 
 LINES: dict[str, dict[Language, str]] = {
     "greeting": {
-        "hi": "नमस्ते {name}! मैं Claim Karo हूँ। बताइए, मैं आपकी क्या मदद कर सकती हूँ?",
-        "en": "Hi {name}! I'm Claim Karo. How can I help you today?",
+        "hi": "नमस्ते {name} जी! मैं Claim Karo हूँ। बताइए, मैं आपकी क्या मदद कर सकती हूँ?",
+        "en": "Hi {name} ji! I'm Claim Karo. How can I help you today?",
     },
     "no_cover": {
         "hi": "माफ़ कीजिए, इस गाड़ी के लिए इस नुकसान पर आपकी पॉलिसी में कवर नहीं है।",

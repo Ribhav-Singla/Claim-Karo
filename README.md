@@ -214,8 +214,8 @@ and requires only the driving licence (`dl`).
 
 | # | Policy | Vehicle | Key terms | Test images |
 |---|---|---|---|---|
-| 1 | `POL-BABU-2W` | Babu Khan's Bajaj Pulsar 150 (2021), `MH49BH1512` | NCB 35%, OD premium ₹2,400, deductibles ₹100 + ₹500 voluntary, no add-ons | `case1`: DL, rear plate |
-| 2 | `POL-BABU-4W` | Babu Khan's Maruti Ertiga (2022), `HR52H9260` | NCB 20%, OD premium ₹15,500, deductible ₹1,000, `zero_dep`, `rsa` | `case1`: burnt Ertiga (the `23BH4589AZ` car is a wrong-vehicle test) |
+| 1 | `POL-BABU-2W` | Anand's Bajaj Pulsar 150 (2021), `MH49BH1512` | NCB 35%, OD premium ₹2,400, deductibles ₹100 + ₹500 voluntary, no add-ons | `case1`: DL, rear plate |
+| 2 | `POL-BABU-4W` | Anand's Maruti Ertiga (2022), `HR52H9260` | NCB 20%, OD premium ₹15,500, deductible ₹1,000, `zero_dep`, `rsa` | `case1`: burnt Ertiga (the `23BH4589AZ` car is a wrong-vehicle test) |
 | 3 | `POL-NADARAJAN-2W` | Nadarajan G's Yamaha MT-15 (2022), `TG153335` | NCB 25%, OD premium ₹2,800, deductible ₹100, `zero_dep` | `case2`: DL, MT-15 damage, detached plate |
 | 4 | `POL-NADARAJAN-4W` | Nadarajan G's MG Hector (2021), `DL12TC0271` | NCB 50%, OD premium ₹18,000, deductible ₹1,000, `ncb_protect`, `rsa` | `case2`: Hector rear damage |
 | 5 | `POL-SAHAYASAILA-2W` | Sahayasaila T's Bajaj Pulsar NS200 (2020), `TN12B5422` | NCB 45%, OD premium ₹2,600, deductible ₹100, no add-ons | `case3`: Pulsar damage (plate only partly readable) |
@@ -458,7 +458,7 @@ py -3.13 -m venv .venv          # or python3.11+ -m venv .venv
 ## 12. Demo scenarios (build exactly these)
 
 **Scenario 1 — Two-wheeler scrape, Hindi, advise not to claim**
-User (Babu Khan): "Signal pe bike ko taxi ne maar diya, ₹4,200 ka kharcha bata raha hai
+User (Anand): "Signal pe bike ko taxi ne maar diya, ₹4,200 ka kharcha bata raha hai
 mechanic."
 → policy 1 matched → ₹4,200 − 45% depreciation (₹1,890) − ₹600 deductibles = payout
 **₹1,710**; NCB loss ₹840 next year, **₹2,040** over three years → `dont_claim`

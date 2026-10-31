@@ -67,17 +67,55 @@ function Rows({ rows }: { rows: [string, React.ReactNode][] }) {
   );
 }
 
-function Stepper({ state }: { state: string }) {
+// The three marks under the bar; the finer steps only name the current one in the header.
+const MILESTONES = [
+  { label: "Details", at: 0 },
+  { label: "Review", at: 90 },
+  { label: "Filed", at: 100 },
+];
+
+// One bar from 0% to 100%, with the steps marked underneath: 0% to start, 60% once the
+// incident is captured and judged, 90% after the photos, 100% when filed.
+export function ProgressBar({ state, percent, compact }: { state: string; percent: number; compact?: boolean }) {
   const current = STEPS.findIndex((s) => s.states.includes(state));
+  const done = percent >= 100;
   return (
-    <ol className="flex items-center gap-1">
-      {STEPS.map((step, i) => (
-        <li key={step.label} className="flex flex-1 flex-col items-center gap-1.5">
-          <span className={`h-1 w-full rounded-full ${i <= current ? "bg-sky" : "bg-line"}`} />
-          <span className={`text-[10px] font-medium ${i === current ? "text-navy" : "text-muted"}`}>{step.label}</span>
-        </li>
-      ))}
-    </ol>
+    <div>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted">
+          {done ? "Claim filed" : STEPS[current]?.label ? `Step: ${STEPS[current].label}` : "Progress"}
+        </p>
+        <p className={`text-sm font-bold tabular-nums ${done ? "text-emerald-600" : "text-navy"}`} aria-live="polite">
+          {percent}%
+        </p>
+      </div>
+      <div
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+        className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-line"
+      >
+        <div
+          className={`h-full rounded-full transition-[width] duration-700 ease-out ${done ? "bg-emerald-500" : "bg-sky"}`}
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+      {!compact && (
+        <ol className="mt-2 flex justify-between">
+          {MILESTONES.map((m) => (
+            <li
+              key={m.label}
+              className={`text-[10px] font-medium ${
+                percent > m.at ? "text-sky-dark" : percent === m.at ? "text-navy" : "text-muted"
+              }`}
+            >
+              {m.label}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
 
@@ -85,10 +123,12 @@ export default function ClaimPanel({
   state,
   profile,
   onFile,
+  hideProgress,
 }: {
   state: ClaimState;
   profile: Profile;
   onFile: () => void;
+  hideProgress?: boolean; // the mobile accordion shows the bar in its own header
 }) {
   const { fields, policy, viability, photos, missingDocs, settlement, form, referenceNo } = state;
   const vehicleName = (id: unknown) => {
@@ -111,9 +151,11 @@ export default function ClaimPanel({
 
   return (
     <aside className="space-y-3 pb-4 md:overflow-y-auto md:pb-0">
-      <div className="rounded-2xl border border-line bg-white px-4 py-3 shadow-sm">
-        <Stepper state={state.state} />
-      </div>
+      {!hideProgress && (
+        <div className="rounded-2xl border border-line bg-white px-4 py-3 shadow-sm">
+          <ProgressBar state={state.state} percent={state.progress} />
+        </div>
+      )}
 
       {viability && (
         <section className={`animate-fadein rounded-2xl border p-4 ${VERDICT[viability.verdict].tone}`}>
@@ -175,7 +217,8 @@ export default function ClaimPanel({
           <div className="grid grid-cols-3 gap-2">
             {photos.map((p) => (
               <figure key={p.id} className="relative overflow-hidden rounded-xl border border-line">
-                {/* Local data URL preview, so next/image adds nothing here */}
+                {/* A data URL or the API's copy of the upload, so next/image adds nothing here */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={p.preview} alt={p.evidence_type ?? "photo"} className="aspect-square w-full object-cover" />
                 <figcaption
                   className={`absolute inset-x-0 bottom-0 px-1.5 py-1 text-center text-[10px] font-semibold text-white ${

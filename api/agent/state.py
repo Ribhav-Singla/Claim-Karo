@@ -12,7 +12,7 @@ import db
 from agent.lines import LINES, PHOTO_LABEL
 from models import Evidence, Incident, Language, Policy, SessionState, User, Vehicle, Viability
 from seed import load_wallet
-from services import rules
+from services import photos, rules
 
 STATE_TOPIC = "claim.state"
 
@@ -70,6 +70,8 @@ class Claim:
                 "status": "accepted" if e.is_accepted else "retake",
                 "evidence_type": e.evidence_type,
                 "quality_issues": e.quality_issues + e.detail_mismatches,
+                # the thumbnail, when the upload is still on disk
+                "url": photos.url(e.id) if photos.exists(e.id) else None,
             }
         if claim := saved["claim"]:
             self.form = claim["claim_form_data"]

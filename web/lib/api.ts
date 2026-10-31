@@ -106,6 +106,7 @@ export type ClaimDetail = ClaimSummary & {
     quality_issues: string[];
     detail_mismatches: string[]; // e.g. PLATE_MISMATCH, DL_NUMBER_MISMATCH
     uploaded_at: string;
+    url: string | null; // the photo itself, when its upload is still on the server
   }[];
   messages: { sender_role: "user" | "bot"; message_text: string; sent_at: string }[];
 };

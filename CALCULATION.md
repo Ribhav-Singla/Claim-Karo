@@ -100,7 +100,7 @@ the payout is more than 1.25 × the NCB loss.
 
 ---
 
-## 3. Worked example: Babu Khan's Ertiga, repair bill ₹6,500
+## 3. Worked example: Anand's Ertiga, repair bill ₹6,500
 
 Policy `POL-BABU-4W` (Bajaj General Insurance):
 
@@ -184,7 +184,7 @@ a repair bill of at least **₹7,782**.
 
 ---
 
-## 4. Second example, with depreciation: Babu Khan's Pulsar, bill ₹4,200
+## 4. Second example, with depreciation: Anand's Pulsar, bill ₹4,200
 
 Policy `POL-BABU-2W`: OD premium ₹2,400, NCB 35%, deductible ₹100 + ₹500 voluntary,
 no add-ons. Bajaj Pulsar 150, made in 2021, incident on 30 Oct 2026.
@@ -208,7 +208,7 @@ payout ≤ NCB loss ?   1,710 ≤ 2,040   → yes  →  dont_claim
 breakeven = (2,040 + 600) × 100 ÷ (100 − 45) + 1 = 264,000 ÷ 55 + 1 = ₹4,801
 ```
 
-**Verdict: `dont_claim`.** Claiming would cost Babu ₹330 more in lost bonus than the
+**Verdict: `dont_claim`.** Claiming would cost Anand ₹330 more in lost bonus than the
 insurer pays.
 
 ---

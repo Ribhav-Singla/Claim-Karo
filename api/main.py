@@ -17,6 +17,7 @@ load_dotenv()
 
 from fastapi import FastAPI, HTTPException  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
 from livekit import api  # noqa: E402
 from livekit.protocol.agent_dispatch import RoomAgentDispatch  # noqa: E402
 from livekit.protocol.room import RoomConfiguration  # noqa: E402
@@ -24,6 +25,7 @@ from livekit.protocol.room import RoomConfiguration  # noqa: E402
 import db  # noqa: E402
 from agent import AGENT_NAME  # noqa: E402
 from seed import load_wallet  # noqa: E402
+from services import photos  # noqa: E402
 
 
 @asynccontextmanager
@@ -40,6 +42,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+photos.PHOTO_DIR.mkdir(parents=True, exist_ok=True)
+app.mount(photos.URL_PREFIX, StaticFiles(directory=photos.PHOTO_DIR), name="photos")
 
 
 @app.get("/users/lookup")
@@ -75,6 +79,8 @@ async def claim_detail(user_id: str, session_id: str) -> dict:
     claim = await db.claim_detail(user_id, session_id)
     if claim is None:
         raise HTTPException(404, "Claim not found")
+    for e in claim["evidence"]:
+        e["url"] = photos.url(e["id"]) if photos.exists(e["id"]) else None
     return claim
 
 

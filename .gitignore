@@ -16,6 +16,9 @@ web/.next/
 web/next-env.d.ts
 web/.env.local
 
+# Uploaded claim photos
+api/static/photos/
+
 # Generated TTS cache (pre-generated lines are committed under static/audio/pregen/)
 api/static/audio/*.mp3
 !api/static/audio/pregen/
