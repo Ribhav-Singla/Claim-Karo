@@ -9,6 +9,10 @@ a later instruction in chat, the chat instruction wins, but update this file to 
 
 ---
 
+## Demo
+
+**Working demo video:** [Watch on Google Drive](https://drive.google.com/file/d/1_nbMfDFoDgMDJGbSeqj0oiax0qretZ7D/view?usp=sharing)
+
 ## Screenshots
 
 <p align="center">
