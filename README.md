@@ -9,6 +9,26 @@ a later instruction in chat, the chat instruction wins, but update this file to 
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="application/92805e77-e9bf-40cc-994c-d9fafdde6915.jpg" width="30%" alt="Entry point: Insurance & Claims tile inside the Paytm home screen" />
+  <img src="application/5136eb47-5ba0-4f34-b3a2-b6f2134f013c.jpg" width="30%" alt="Claim Karo home: resume a filed claim or start a new one, with the user's policies" />
+  <img src="application/e5fbf472-31d0-4bd1-ad21-edca838cdccf.jpg" width="30%" alt="Hindi conversation with photo grading: accepted photos and retake reasons" />
+</p>
+<p align="center">
+  <img src="application/85c64f27-f651-48bb-9231-1b72b4b4395e.jpg" width="30%" alt="Filed claim with reference number and viability verdict: insurer pays vs No-Claim Bonus lost" />
+  <img src="application/7bc0a97a-68ed-41e2-9a6f-c9dd1650f5f4.jpg" width="30%" alt="Auto-filled claim form with expected payout and settlement estimate" />
+</p>
+
+1. **Entry point** — the Insurance & Claims tile inside the Paytm home screen.
+2. **Claim Karo home** — resume a filed claim or start a new one; policies from the wallet listed below.
+3. **Voice/chat intake in Hindi** — damage photos graded live, with plain-language retake reasons.
+4. **Viability verdict** — insurer payout vs No-Claim Bonus lost, plus the filed reference number.
+5. **Pre-filled claim form** — route, vehicle, insurer, expected payout and settlement estimate.
+
+---
+
 ## 1. What we are building
 
 A voice-first web app where a user describes a **motor** (two-wheeler or car) accident in
