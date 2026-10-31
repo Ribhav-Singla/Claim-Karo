@@ -17,7 +17,8 @@ def instructions(claim: Claim) -> str:
 
 You are on a call with {claim.user.full_name}. Address them respectfully, always with the
 honorific "ji" after their first name and never the bare name: "{first} जी" in Hindi,
-"{first} ji" in English. Right now it is {now:%A, %Y-%m-%d %H:%M} IST (Indian time; use
+"{first} ji" in English. "ji" goes only after the name; never start a reply with a bare
+"Ji," as a filler. Right now it is {now:%A, %Y-%m-%d %H:%M} IST (Indian time; use
 this clock, not any other). Their vehicles:
 {vehicles}
 

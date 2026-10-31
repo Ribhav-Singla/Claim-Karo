@@ -59,12 +59,12 @@ function MobileClaimAccordion({
   onToggle: () => void;
 }) {
   return (
-    <div className="md:hidden">
+    <div className={`md:hidden ${open ? "flex min-h-0 flex-1 flex-col" : "shrink-0"}`}>
       <button
         onClick={onToggle}
         aria-expanded={open}
         aria-controls="claim-details"
-        className="flex w-full items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-left shadow-sm"
+        className="flex w-full shrink-0 items-center gap-3 rounded-2xl border border-line bg-white px-4 py-3 text-left shadow-sm"
       >
         <div className="min-w-0 flex-1">
           <ProgressBar state={state.state} percent={state.progress} compact />
@@ -85,7 +85,7 @@ function MobileClaimAccordion({
         </span>
       </button>
       {open && (
-        <div id="claim-details" className="mt-3 animate-fadein">
+        <div id="claim-details" className="mt-3 min-h-0 flex-1 animate-fadein overflow-y-auto">
           <ClaimPanel state={state} profile={profile} onFile={onFile} hideProgress />
         </div>
       )}
@@ -121,7 +121,8 @@ function Conversation({ profile, language, resumeId, onSessionId }: SessionProps
   const file = () => decide("file");
 
   return (
-    <div className="flex flex-col gap-3 py-3 md:grid md:h-[calc(100dvh-4rem)] md:grid-cols-[1fr_380px] md:gap-4 md:py-4">
+    // the conversation fills the viewport under the header; only the message list scrolls
+    <div className="flex h-[calc(100dvh-4rem)] flex-col gap-3 py-3 md:grid md:grid-cols-[1fr_380px] md:gap-4 md:py-4">
       <MobileClaimAccordion
         state={state}
         profile={profile}
@@ -130,7 +131,7 @@ function Conversation({ profile, language, resumeId, onSessionId }: SessionProps
         onToggle={() => setDetailsOpen((o) => !o)}
       />
       {/* on a phone the chat steps aside while the details are open */}
-      <div className={`min-h-0 ${detailsOpen ? "hidden md:flex" : "flex"} flex-col`}>
+      <div className={`min-h-0 flex-1 ${detailsOpen ? "hidden md:flex" : "flex"} flex-col`}>
         <Chat state={state} onText={sendText} onPhoto={sendPhoto} onDecide={decide} setMic={setMic} />
       </div>
       <div className="hidden min-h-0 md:block">

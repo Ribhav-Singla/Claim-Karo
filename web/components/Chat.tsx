@@ -57,7 +57,7 @@ export default function Chat({ state, onText, onPhoto, onDecide, setMic }: Props
     : "Online";
 
   return (
-    <section className="flex min-h-[70dvh] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm md:h-full md:min-h-0">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-sm">
       <div className="flex items-center gap-3 border-b border-line px-5 py-3">
         <div className="grid h-9 w-9 place-items-center rounded-full bg-navy text-xs font-bold text-white">CK</div>
         <div className="leading-tight">
