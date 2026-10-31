@@ -231,7 +231,6 @@ Pure functions, no I/O, 100% unit-tested. All amounts in integer INR.
 ```python
 def match_policy(incident, policies) -> Policy | None
 def claim_type(incident, policy) -> "own_damage"|"third_party"|"both"|None
-def fir_required(incident) -> bool            # third-party injury/damage, theft, hit-and-run
 def viability(incident, policy, vehicle, as_of=None) -> Viability
 def is_cashless(incident, policy) -> bool
 def missing_documents(incident, policy, evidence) -> list[str]
@@ -269,8 +268,8 @@ Settlement estimate (`data/settlement_table.json`, `services/settlement.py`): ke
 `(claim_type, cashless|reimbursement, docs_complete: bool)` → `[min_days, max_days]`.
 
 Documents: `policy_copy` and `rc` are auto-satisfied from the wallet. `garage_estimate`
-is waived on the cashless route (the network garage submits it). `fir` is added whenever
-`fir_required()`.
+is waived on the cashless route (the network garage submits it). Nothing else is added
+from the incident: the user is only ever asked for what the policy lists (today, `dl`).
 
 Required photos: `damage_wide` (must show the number plate) for every vehicle, plus `dl`
 when the policy requires it. No odometer photo is asked for.

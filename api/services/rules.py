@@ -30,7 +30,6 @@ DEPRECIATION_MAX_PCT = 45
 
 # Documents the wallet already holds, so the user never has to upload them.
 WALLET_DOCS: frozenset[str] = frozenset({"policy_copy", "rc"})
-FIR_FLAGS: frozenset[str] = frozenset({"theft", "hit_and_run"})
 # Uploads whose details must match the records before a claim can be filed.
 VERIFIED_KINDS: tuple[str, ...] = ("damage_wide", "dl")
 
@@ -133,10 +132,6 @@ def depreciation_breakdown(policy: Policy, vehicle: Vehicle, as_of: date) -> dic
     }
 
 
-def fir_required(incident: Incident) -> bool:
-    return _has_third_party_liability(incident) or bool(FIR_FLAGS & set(incident.risk_flags))
-
-
 def is_cashless(incident: Incident, policy: Policy) -> bool:
     if not incident.garage_name:
         return False
@@ -213,8 +208,6 @@ def viability(
     if ctype is None:
         reasons.append("NO_APPLICABLE_COVER")
         return result("not_covered")
-    if fir_required(incident):
-        reasons.append("FIR_REQUIRED")
     if ctype == "third_party":
         # Insurer pays the third party directly; there is no own-damage payout to weigh.
         reasons.append("THIRD_PARTY_LIABILITY")
@@ -321,19 +314,15 @@ def policy_summary(
 
 
 def required_documents(incident: Incident, policy: Policy) -> list[str]:
-    """Every document this claim needs: the policy's list, plus an FIR if the incident needs one."""
-    required = list(policy.required_documents)
-    if fir_required(incident) and "fir" not in required:
-        required.append("fir")
-    return list(dict.fromkeys(required))
+    """Every document this claim needs: exactly the policy's list (today, the driving licence).
+    Nothing is added from the incident, so the user is never asked for an FIR."""
+    return list(dict.fromkeys(policy.required_documents))
 
 
 def missing_documents(incident: Incident, policy: Policy, evidence: list[Evidence]) -> list[str]:
     have = {e.evidence_type for e in evidence if e.is_accepted} | WALLET_DOCS
     if incident.garage_estimate_uploaded or is_cashless(incident, policy):
         have.add("garage_estimate")
-    if incident.police_report_filed:
-        have.add("fir")
 
     return [doc for doc in required_documents(incident, policy) if doc not in have]
 
