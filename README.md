@@ -133,7 +133,7 @@ INTAKE ──► MATCH_POLICY ──► VIABILITY ──► EVIDENCE ──► F
 | State | Input | Does | Claude call | Tool / trigger | Next |
 |---|---|---|---|---|---|
 | `INTAKE` | user utterance | Extract/merge `Incident`. If required fields missing, ask one targeted question. | conversation LLM | `record_incident` | self (ask) or `MATCH_POLICY` |
-| `MATCH_POLICY` | Incident | Filter user's policies by vehicle reg + date in period + cover type. | none (rules) | inside `record_incident` | `VIABILITY` or `NO_COVER` |
+| `MATCH_POLICY` | Incident | Filter user's policies by vehicle reg + date in period + cover type. A policy that had lapsed by the incident date gets the fixed `policy_expired` line. | none (rules) | inside `record_incident` | `VIABILITY` or `NO_COVER` |
 | `VIABILITY` | Incident + Policy | `rules.viability()` → numbers + verdict. Claude explains in user language. Ask "claim karna hai?" | conversation LLM | `start_claim` / `decline_claim` | `EVIDENCE` (yes) / `ADVISED_NO_CLAIM` (no) |
 | `EVIDENCE` | photo | `vision.grade_photo()` against checklist. Retake or accept. Loop until required shots present. | `grade_damage_photo` (vision) | `photo` byte stream | self or `FORM_REVIEW` |
 | `FORM_REVIEW` | — | Assemble `ClaimForm`, compute missing docs, settlement estimate. Read summary aloud. | conversation LLM | after the last photo | `FILED` on user tap |
@@ -220,6 +220,7 @@ and requires only the driving licence (`dl`).
 | 4 | `POL-NADARAJAN-4W` | Nadarajan G's MG Hector (2021), `DL12TC0271` | NCB 50%, OD premium ₹18,000, deductible ₹1,000, `ncb_protect`, `rsa` | `case2`: Hector rear damage |
 | 5 | `POL-SAHAYASAILA-2W` | Sahayasaila T's Bajaj Pulsar NS200 (2020), `TN12B5422` | NCB 45%, OD premium ₹2,600, deductible ₹100, no add-ons | `case3`: Pulsar damage (plate only partly readable) |
 | 6 | `POL-SAHAYASAILA-4W` | Sahayasaila T's Maruti Swift Dzire (2015), `TN12C0455` | NCB 25%, OD premium ₹6,500, deductible ₹1,000, `rsa` | `case3`: DL, Dzire rear damage |
+| 7 | `POL-SAHAYASAILA-SCOOTER` | Sahayasaila T's Honda Activa 6G (2019), `TN12AB7781` | **Expired** 30 Sep 2026 (the one lapsed-policy case): the bot says when it ended and to renew in Paytm, nothing else | none (never reaches photos) |
 
 ---
 

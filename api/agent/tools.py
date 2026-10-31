@@ -15,7 +15,7 @@ import db
 from agent.prompt import instructions
 from agent.state import Claim
 from seed import load_wallet
-from services import rules
+from services import clock, rules
 
 RiskFlag = Literal["drunk_driving", "no_valid_dl", "commercial_use", "theft", "hit_and_run"]
 
@@ -31,6 +31,7 @@ class ClaimAgent(Agent):
         context: RunContext[Claim],
         vehicle_id: str | None = None,
         incident_date: str | None = None,
+        hours_ago: int | None = None,
         incident_location: str | None = None,
         description_english: str | None = None,
         third_party_involved: bool | None = None,
@@ -46,7 +47,12 @@ class ClaimAgent(Agent):
 
         Args:
             vehicle_id: One of the user's vehicle ids.
-            incident_date: YYYY-MM-DD; resolve "kal"/"yesterday" against today.
+            incident_date: YYYY-MM-DD, when the user named a day ("kal", "Monday", "25th");
+                resolve it against today's date in the instructions. Never in the future.
+            hours_ago: When the user placed it by hours instead ("an hour ago", "do ghante
+                pehle", "abhi"), pass the hours here and leave incident_date null: the tool
+                works the date out from the clock, so just after midnight "an hour ago"
+                correctly lands on yesterday.
             incident_location: Where it happened.
             description_english: One-line English summary of the whole incident so far.
             third_party_involved: Another person or vehicle was involved.
@@ -82,11 +88,19 @@ class ClaimAgent(Agent):
         }
         if vehicle_id is not None and vehicle_id not in {v.id for v in claim.vehicles}:
             raise ToolError(f"Unknown vehicle_id {vehicle_id!r}; use one of the listed ids.")
-        if incident_date is not None:
+        now = clock.now()
+        if hours_ago is not None:
+            updates["incident_date"] = rules.resolve_incident_date(hours_ago, now)
+        elif incident_date is not None:
             try:
                 updates["incident_date"] = date.fromisoformat(incident_date)
             except ValueError:
                 raise ToolError("incident_date must be YYYY-MM-DD.") from None
+        if updates.get("incident_date", now.date()) > now.date():
+            raise ToolError(
+                f"incident_date {updates['incident_date']} is in the future; right now it is "
+                f"{now:%Y-%m-%d %H:%M} IST. Ask the user when it happened."
+            )
         if risk_flags:
             updates["risk_flags"] = sorted(set(claim.incident.risk_flags) | set(risk_flags))
 
@@ -101,10 +115,20 @@ class ClaimAgent(Agent):
             return f"Saved. Still needed: {', '.join(missing)}."
 
         # everything required is known: match the policy and run the numbers
-        policy = rules.match_policy(incident, load_wallet().policies_for(claim.user.id))
+        policies = load_wallet().policies_for(claim.user.id)
+        policy = rules.match_policy(incident, policies)
         if policy is None:
             await claim.set_stage("NO_COVER")
             await claim.publish()
+            # The one expired-policy case: they had cover, it had run out. Fixed line, no
+            # alternatives, no recomputing.
+            if lapsed := rules.expired_policy(incident, policies):
+                line = claim.line(
+                    "policy_expired",
+                    insurer=lapsed.insurer_name,
+                    end=clock.spoken(lapsed.coverage_end_date),
+                )
+                return f"Say exactly: {line}"
             return "No policy covers this. Tell the user, kindly, in one sentence."
         claim.policy = policy
         vehicle = load_wallet().vehicles[policy.vehicle_id]
@@ -124,11 +148,36 @@ class ClaimAgent(Agent):
                 "choice. Then explain the verdict, mention the 3-4 days in the service "
                 "centre and that the ₹1,000 file charge is free through Paytm. " + note
             )
+        v = claim.viability
+        breakdown = rules.depreciation_breakdown(
+            policy, vehicle, incident.incident_date or now.date()
+        )
+        if covered and (v.depreciation_inr or v.deductible_inr):
+            note += (
+                " Where money is held back, say so plainly in one sentence each, using these "
+                "numbers only: "
+            )
+            if v.depreciation_inr:
+                note += (
+                    f"the vehicle is {breakdown['vehicle_age_years']} years old (model year "
+                    f"{vehicle.manufacture_year}), so {breakdown['depreciation_pct']}% "
+                    f"depreciation of ₹{v.depreciation_inr:,} comes off the estimate; "
+                )
+            elif breakdown["zero_dep_add_on"]:
+                note += "no depreciation, because the policy has the zero-dep add-on; "
+            note += (
+                f"the deductible of ₹{v.deductible_inr:,} is the user's own share on every "
+                "claim. Then state the result: of the estimate, the insurer pays "
+                "insurer_payout_inr and the user bears the rest."
+            )
         return json.dumps(
             {
                 "policy": f"{policy.insurer_name}, NCB {policy.no_claim_bonus_pct}%, "
                 f"add-ons {policy.add_on_covers or 'none'}",
-                "verdict (final, do not recompute)": claim.viability.model_dump(),
+                "vehicle": f"{vehicle.brand} {vehicle.model}, model year "
+                f"{vehicle.manufacture_year}",
+                "depreciation_basis": breakdown,
+                "verdict (final, do not recompute)": v.model_dump(),
                 "note": note,
             }
         )
@@ -142,7 +191,12 @@ class ClaimAgent(Agent):
         await claim.set_stage("EVIDENCE")
         await claim.publish()
         kind = claim.next_photo_kind()
-        return f"Say exactly: {claim.line('ask_photo', kind=claim.photo_label(kind or ''))}"
+        ask = claim.line("ask_photo", kind=claim.photo_label(kind or ""))
+        # Reporting within 24-48 hours of the accident deserves a word of appreciation.
+        incident_date = claim.incident.incident_date
+        if incident_date and (clock.today() - incident_date).days <= 2:
+            return f"Say exactly: {claim.line('prompt_filing')} {ask}"
+        return f"Say exactly: {ask}"
 
     @function_tool()
     async def decline_claim(self, context: RunContext[Claim]) -> str:
@@ -176,11 +230,23 @@ class ClaimAgent(Agent):
         return f"Say exactly: {claim.line('filed', ref=reference)}"
 
     @function_tool()
-    async def cancel_claim(self, context: RunContext[Claim]) -> str:
+    async def cancel_claim(self, context: RunContext[Claim], confirmed: bool = False) -> str:
         """Drop the current claim at any step before it is filed and start a new one, e.g.
         when the user wants to stop this claim or claim for a different vehicle instead.
-        Then record the new incident's facts with record_incident."""
+        Then record the new incident's facts with record_incident.
+
+        Args:
+            confirmed: True only after you asked the user "are you sure you want to cancel
+                this claim?" in your previous turn and they said yes. Never on the same turn
+                the user first mentions cancelling.
+        """
         claim = context.userdata
+        if not confirmed:
+            raise ToolError(
+                "Not cancelled: first ask the user to confirm they want to cancel this claim "
+                "and lose its details, then call cancel_claim with confirmed=true if they say "
+                "yes."
+            )
         filed_reference = claim.reference
         if rules.is_cancellable(claim.stage):
             await db.cancel_claim(claim.session_id)
@@ -192,6 +258,22 @@ class ClaimAgent(Agent):
                 "with the insurer. A new claim has started."
             )
         return "Cancelled. A new claim has started."
+
+    @function_tool()
+    async def request_advisor_callback(self, context: RunContext[Claim], question: str) -> str:
+        """Hand a question you can't answer to a human advisor, who calls the user back
+        within a few working hours. Call ONLY after the user has agreed to the callback.
+
+        Args:
+            question: The user's question, in one or two sentences of English.
+        """
+        claim = context.userdata
+        if not question.strip():
+            raise ToolError("Pass the user's question.")
+        await db.request_advisor_callback(
+            claim.session_id, claim.user.id, claim.user.phone_number, question.strip()
+        )
+        return f"Say exactly: {claim.line('callback_booked', phone=claim.user.phone_number)}"
 
     # --- questions the user can ask at any step (read-only) -------------------------------
 
@@ -206,7 +288,7 @@ class ClaimAgent(Agent):
                 p,
                 wallet.vehicles[p.vehicle_id],
                 wallet.document_names(p.required_documents),
-                date.today(),
+                clock.today(),
             )
             for p in wallet.policies_for(context.userdata.user.id)
         ]
@@ -238,7 +320,7 @@ class ClaimAgent(Agent):
             estimated_repair_cost_inr,
             wallet.policies_for(claim.user.id),
             wallet.vehicles,
-            date.today(),
+            clock.today(),
         )
         if verdict is None:
             return "No active policy covers this vehicle for this damage."

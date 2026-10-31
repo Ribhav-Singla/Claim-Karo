@@ -10,14 +10,13 @@ import asyncio
 import json
 import os
 import secrets
-from datetime import date
 from pathlib import Path
 
 import asyncpg
 
 from models import Evidence, Incident, Viability
 from seed import load_wallet
-from services import rules
+from services import clock, rules
 
 SCHEMA = Path(__file__).with_name("schema.sql")
 # One pool per event loop: on Windows LiveKit runs each call in its own thread and loop, and
@@ -187,6 +186,20 @@ async def save_incident(
     )
 
 
+async def request_advisor_callback(
+    session_id: str, user_id: str, phone_number: str, question: str
+) -> int:
+    """Log a question the bot can't answer for a human advisor; returns the request id."""
+    return await pool().fetchval(
+        """INSERT INTO advisor_callbacks (session_id, user_id, phone_number, question)
+           VALUES ($1, $2, $3, $4) RETURNING id""",
+        session_id,
+        user_id,
+        phone_number,
+        question,
+    )
+
+
 async def add_evidence(session_id: str, e: Evidence) -> None:
     await pool().execute(
         """INSERT INTO evidence (id, session_id, evidence_type, is_accepted, quality_issues,
@@ -239,7 +252,7 @@ async def file_claim(session_id: str) -> str | None:
     Raises DocumentsNotVerified unless the number plate photo and the driving licence match
     the records; this is the one gate both the chat and the dashboard go through.
     """
-    reference_number = f"CK-{date.today():%y%m%d}-{secrets.token_hex(3).upper()}"
+    reference_number = f"CK-{clock.today():%y%m%d}-{secrets.token_hex(3).upper()}"
     async with pool().acquire() as conn, conn.transaction():
         policy_id = await conn.fetchval(
             """SELECT policy_id FROM claims

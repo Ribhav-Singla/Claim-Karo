@@ -160,5 +160,27 @@
       "Guindy Maruti Arena Service",
       "Koyambedu Car Clinic"
     ]
+  },
+  {
+    "id": "POL-SAHAYASAILA-SCOOTER",
+    "user_id": "u_sahayasaila",
+    "driving_licence_number": "TN21X20080011684",
+    "driving_licence_holder_name": "Sahayasaila T",
+    "driving_licence_valid_until": "2028-12-07",
+    "vehicle_id": "v_sahayasaila_scooter",
+    "insurer_name": "ICICI Lombard General Insurance",
+    "policy_number": "ICICI/2W/2025/0039417",
+    "coverage_type": "comprehensive",
+    "coverage_start_date": "2025-10-01",
+    "coverage_end_date": "2026-09-30",
+    "insured_declared_value_inr": 48000,
+    "own_damage_premium_inr": 1900,
+    "no_claim_bonus_pct": 20,
+    "compulsory_deductible_inr": 100,
+    "voluntary_deductible_inr": 0,
+    "add_on_covers": [],
+    "excluded_conditions": ["drunk_driving", "no_valid_dl", "commercial_use"],
+    "required_documents": ["dl"],
+    "cashless_garage_names": ["Porur Honda Service Chennai", "Vadapalani Honda Care"]
   }
 ]

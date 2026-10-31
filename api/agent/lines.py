@@ -13,6 +13,38 @@ LINES: dict[str, dict[Language, str]] = {
         "hi": "माफ़ कीजिए, इस गाड़ी के लिए इस नुकसान पर आपकी पॉलिसी में कवर नहीं है।",
         "en": "Sorry, none of your policies cover this damage for this vehicle.",
     },
+    "policy_expired": {
+        "hi": (
+            "माफ़ कीजिए, इस गाड़ी की {insurer} पॉलिसी {end} को ख़त्म हो चुकी थी, इसलिए यह "
+            "नुकसान कवर नहीं है। Paytm ऐप से पॉलिसी renew करा लीजिए ताकि अगली बार आप "
+            "सुरक्षित रहें।"
+        ),
+        "en": (
+            "Sorry, the {insurer} policy on this vehicle ended on {end}, so this damage "
+            "isn't covered. Please renew it in the Paytm app so you're protected next time."
+        ),
+    },
+    "prompt_filing": {
+        "hi": (
+            "बहुत अच्छा फ़ैसला! दुर्घटना के 24 से 48 घंटे के अंदर claim करना सबसे सही होता है, "
+            "इससे claim मंज़ूर होने की संभावना काफ़ी बढ़ जाती है।"
+        ),
+        "en": (
+            "Great decision! Reporting the claim within 24 to 48 hours of the accident is "
+            "the best thing you can do; it greatly increases the chance of the claim being "
+            "approved."
+        ),
+    },
+    "callback_booked": {
+        "hi": (
+            "ठीक है, मैंने आपका सवाल हमारे advisor तक पहुँचा दिया है। वे कुछ working hours के "
+            "अंदर आपको {phone} पर कॉल करेंगे। तब तक, claim पर आगे बढ़ें?"
+        ),
+        "en": (
+            "Done, I've passed your question to our advisor. They'll call you on {phone} "
+            "within a few working hours. Meanwhile, shall we continue with the claim?"
+        ),
+    },
     "ask_photo": {
         "hi": "ठीक है, claim शुरू करते हैं। कृपया {kind} की फ़ोटो अपलोड करें।",
         "en": "Great, let's start the claim. Please upload a photo: {kind}.",

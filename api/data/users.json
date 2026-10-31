@@ -73,6 +73,15 @@
       "brand": "Maruti Suzuki",
       "model": "Swift Dzire LXi",
       "manufacture_year": 2015
+    },
+    {
+      "id": "v_sahayasaila_scooter",
+      "user_id": "u_sahayasaila",
+      "vehicle_type": "2W",
+      "vehicle_number": "TN12AB7781",
+      "brand": "Honda",
+      "model": "Activa 6G",
+      "manufacture_year": 2019
     }
   ]
 }

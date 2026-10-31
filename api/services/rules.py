@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from models import ClaimType, Evidence, Incident, Policy, Vehicle, Viability
 
@@ -98,6 +98,39 @@ def match_policy(incident: Incident, policies: list[Policy]) -> Policy | None:
             continue
         return policy
     return None
+
+
+def expired_policy(incident: Incident, policies: list[Policy]) -> Policy | None:
+    """The one case where the user *had* cover for this vehicle but it had run out by the
+    incident date (or hadn't started): the latest such policy, so the user can be told when
+    it ended. None when there is an active policy or none at all for the vehicle."""
+    if incident.vehicle_id is None or incident.incident_date is None:
+        return None
+    lapsed = [
+        p
+        for p in policies
+        if p.vehicle_id == incident.vehicle_id and not is_active(p, incident.incident_date)
+    ]
+    return max(lapsed, key=lambda p: p.coverage_end_date, default=None)
+
+
+def resolve_incident_date(hours_ago: int, now: datetime) -> date:
+    """The calendar date of an incident the user placed 'N hours ago'. Done here, on the
+    clock, because at 00:30 'an hour ago' is yesterday and a model guessing from 'today' gets
+    that wrong."""
+    return (now - timedelta(hours=max(0, hours_ago))).date()
+
+
+def depreciation_breakdown(policy: Policy, vehicle: Vehicle, as_of: date) -> dict:
+    """Why the depreciation on this claim is what it is, for Claude to explain in words."""
+    age_months = vehicle_age_months(vehicle, as_of)
+    zero_dep = "zero_dep" in policy.add_on_covers
+    return {
+        "vehicle_age_years": age_months // 12,
+        "vehicle_age_months": age_months,
+        "depreciation_pct": 0 if zero_dep else depreciation_pct(age_months),
+        "zero_dep_add_on": zero_dep,
+    }
 
 
 def fir_required(incident: Incident) -> bool:

@@ -127,3 +127,14 @@ CREATE TABLE IF NOT EXISTS claim_documents (
     is_provided    boolean NOT NULL DEFAULT false,
     PRIMARY KEY (session_id, document_code)
 );
+
+-- A question the bot couldn't answer, handed to a human advisor who calls the user back.
+CREATE TABLE IF NOT EXISTS advisor_callbacks (
+    id            bigserial PRIMARY KEY,
+    session_id    text NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    user_id       text NOT NULL REFERENCES users(id),
+    phone_number  text NOT NULL,
+    question      text NOT NULL,
+    requested_at  timestamptz NOT NULL DEFAULT now(),
+    status        text NOT NULL DEFAULT 'pending'   -- 'pending' | 'done'
+);
