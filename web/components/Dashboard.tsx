@@ -162,7 +162,7 @@ function ClaimRow({
     <article
       onClick={onSelect}
       aria-current={active}
-      className={`cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition ${
+      className={`min-w-0 cursor-pointer rounded-2xl border bg-white p-4 shadow-sm transition ${
         active ? "border-sky ring-4 ring-sky-soft" : "border-line hover:border-sky"
       }`}
     >
@@ -415,7 +415,7 @@ function ClaimDetailPanel({
           <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted">Photos checked</h3>
           <ul className="space-y-2 text-sm">
             {claim.evidence.map((e) => (
-              <li key={e.id} className="flex items-center gap-3">
+              <li key={e.id} className="flex items-start gap-3">
                 {e.url && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -424,10 +424,12 @@ function ClaimDetailPanel({
                     className="h-12 w-12 shrink-0 rounded-lg border border-line object-cover"
                   />
                 )}
-                <span className="min-w-0 flex-1 text-ink">{PHOTO_LABEL[e.evidence_type] ?? label(e.evidence_type)}</span>
-                <span className={`text-right text-xs font-medium ${e.is_accepted ? "text-emerald-700" : "text-red-600"}`}>
-                  {e.is_accepted ? "Accepted" : `Retake: ${[...e.detail_mismatches, ...e.quality_issues].map(label).join(", ").toLowerCase()}`}
-                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-ink">{PHOTO_LABEL[e.evidence_type] ?? label(e.evidence_type)}</p>
+                  <p className={`mt-0.5 text-xs font-medium break-words ${e.is_accepted ? "text-emerald-700" : "text-red-600"}`}>
+                    {e.is_accepted ? "Accepted" : `Retake: ${[...e.detail_mismatches, ...e.quality_issues].map(label).join(", ").toLowerCase()}`}
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
@@ -570,7 +572,7 @@ export default function Dashboard({
   const uninsured = profile.vehicles.filter((v) => !v.policy);
 
   return (
-    <div className="grid gap-6 py-6 md:grid-cols-[minmax(0,1fr)_400px] md:items-start">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-6 py-6 md:grid-cols-[minmax(0,1fr)_400px] md:items-start">
       <div className={`min-w-0 space-y-8 ${selected ? "hidden md:block" : ""}`}>
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -610,7 +612,7 @@ export default function Dashboard({
             .filter((g) => g.items.length > 0)
             .map((g) => (
               <Section key={g.title} title={g.title} aside={<p className="text-xs text-muted">{g.items.length}</p>}>
-                <div className="grid gap-3 lg:grid-cols-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
                   {g.items.map((c) => (
                     <ClaimRow
                       key={c.session_id}
@@ -628,7 +630,7 @@ export default function Dashboard({
 
         <Section title="Policies">
           {data && (
-            <div className="grid gap-3 lg:grid-cols-2">
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-2">
               {data.policies.map((p) => (
                 <PolicyCard key={p.id} policy={p} language={language} />
               ))}
